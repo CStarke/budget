@@ -45,7 +45,8 @@
     settingsModal: document.getElementById("settingsModal"),
     scriptUrlInput: document.getElementById("scriptUrlInput"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
-    btnSyncNow: document.getElementById("btnSyncNow")
+    btnSyncNow: document.getElementById("btnSyncNow"),
+    btnUpdateApp: document.getElementById("btnUpdateApp")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -406,10 +407,34 @@
     }
   });
 
+  // Force App Update & Clear Cache
+  async function forceAppUpdate() {
+    haptic(20);
+    showToast("Updating app...", "success");
+    if ("caches" in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) {}
+    }
+    if ("serviceWorker" in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((r) => r.unregister()));
+      } catch (e) {}
+    }
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 350);
+  }
+
   elements.btnOpenSettings.addEventListener("click", openSettings);
   elements.btnCloseSettings.addEventListener("click", closeSettings);
   elements.btnSaveSettings.addEventListener("click", saveSettings);
   elements.btnSyncNow.addEventListener("click", () => syncOptions(true));
+  if (elements.btnUpdateApp) {
+    elements.btnUpdateApp.addEventListener("click", forceAppUpdate);
+  }
 
   elements.settingsModal.addEventListener("click", (e) => {
     if (e.target === elements.settingsModal) {
@@ -420,7 +445,9 @@
   // Register Service Worker for Firefox / Chrome PWA
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch((err) => {
+      navigator.serviceWorker.register("./sw.js").then((reg) => {
+        reg.update();
+      }).catch((err) => {
         console.log("ServiceWorker registration skipped/failed:", err);
       });
     });
