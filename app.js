@@ -9,10 +9,15 @@
   const state = {
     scriptUrl: localStorage.getItem("budget_script_url") || "",
     sheetName: localStorage.getItem("budget_sheet_name") || "Budget",
+    defaults: {
+      category: localStorage.getItem("budget_default_category") || "",
+      from: localStorage.getItem("budget_default_from") || "",
+      to: localStorage.getItem("budget_default_to") || ""
+    },
     selectedDate: getFormattedDate(new Date()),
-    selectedCategory: "",
-    selectedFrom: "",
-    selectedTo: "",
+    selectedCategory: localStorage.getItem("budget_default_category") || "",
+    selectedFrom: localStorage.getItem("budget_default_from") || "",
+    selectedTo: localStorage.getItem("budget_default_to") || "",
     options: {
       category: JSON.parse(localStorage.getItem("budget_options_cat") || "[]"),
       from: JSON.parse(localStorage.getItem("budget_options_from") || "[]"),
@@ -38,6 +43,12 @@
     fromBtnText: document.getElementById("fromBtnText"),
     btnSelectTo: document.getElementById("btnSelectTo"),
     toBtnText: document.getElementById("toBtnText"),
+    btnDefaultCategory: document.getElementById("btnDefaultCategory"),
+    defaultCatBtnText: document.getElementById("defaultCatBtnText"),
+    btnDefaultFrom: document.getElementById("btnDefaultFrom"),
+    defaultFromBtnText: document.getElementById("defaultFromBtnText"),
+    btnDefaultTo: document.getElementById("btnDefaultTo"),
+    defaultToBtnText: document.getElementById("defaultToBtnText"),
     pickerOverlay: document.getElementById("pickerOverlay"),
     pickerBackdrop: document.getElementById("pickerBackdrop"),
     pickerTitle: document.getElementById("pickerTitle"),
@@ -167,10 +178,16 @@
     updateButtonDisplay(elements.toBtnText, elements.btnSelectTo, state.selectedTo);
   }
 
+  function updateDefaultButtons() {
+    updateButtonDisplay(elements.defaultCatBtnText, elements.btnDefaultCategory, state.defaults.category, "(None)");
+    updateButtonDisplay(elements.defaultFromBtnText, elements.btnDefaultFrom, state.defaults.from, "(None)");
+    updateButtonDisplay(elements.defaultToBtnText, elements.btnDefaultTo, state.defaults.to, "(None)");
+  }
+
   // Active Picker Modal State
   let activePickerField = null;
 
-  function openPicker(field) {
+  function openPicker(field, isDefault = false) {
     activePickerField = field;
     elements.pickerList.innerHTML = "";
 
@@ -178,14 +195,21 @@
     let currentValue = "";
 
     if (field === "category") {
-      items = state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category;
-      currentValue = state.selectedCategory;
+      items = [...(state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category)];
+      currentValue = isDefault ? state.defaults.category : state.selectedCategory;
     } else if (field === "from") {
-      items = state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from;
-      currentValue = state.selectedFrom;
+      items = [...(state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from)];
+      currentValue = isDefault ? state.defaults.from : state.selectedFrom;
     } else if (field === "to") {
-      items = state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to;
-      currentValue = state.selectedTo;
+      items = [...(state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to)];
+      currentValue = isDefault ? state.defaults.to : state.selectedTo;
+    }
+
+    if (isDefault) {
+      items.push("(None)");
+      if (!currentValue) {
+        currentValue = "(None)";
+      }
     }
 
     if (elements.pickerTitle) {
@@ -201,8 +225,14 @@
       elements.pickerList.appendChild(emptyDiv);
     } else {
       items.forEach((item) => {
-        const isConflicting = (field === "from" && state.selectedTo && item.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) ||
-                              (field === "to" && state.selectedFrom && item.trim().toLowerCase() === state.selectedFrom.trim().toLowerCase());
+        let isConflicting = false;
+        if (!isDefault) {
+          isConflicting = (field === "from" && state.selectedTo && item.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) ||
+                          (field === "to" && state.selectedFrom && item.trim().toLowerCase() === state.selectedFrom.trim().toLowerCase());
+        } else if (item !== "(None)") {
+          isConflicting = (field === "from" && state.defaults.to && item.trim().toLowerCase() === state.defaults.to.trim().toLowerCase()) ||
+                          (field === "to" && state.defaults.from && item.trim().toLowerCase() === state.defaults.from.trim().toLowerCase());
+        }
 
         const btn = document.createElement("button");
         btn.type = "button";
@@ -215,11 +245,33 @@
           if (isConflicting) {
             haptic([30, 60, 30]);
             const otherField = field === "from" ? "To" : "From";
-            showToast(`"${item}" is already selected for ${otherField}.`, "error");
+            showToast(`"${item}" is already selected for ${isDefault ? "default " : ""}${otherField}.`, "error");
             return;
           }
 
           haptic(12);
+          if (isDefault) {
+            if (item === "(None)") {
+              state.defaults[field] = "";
+              localStorage.removeItem(`budget_default_${field}`);
+              showToast(`Default for ${field} cleared.`, "success");
+            } else {
+              state.defaults[field] = item;
+              localStorage.setItem(`budget_default_${field}`, item);
+              showToast(`Default ${field} set to "${item}".`, "success");
+            }
+            updateDefaultButtons();
+
+            // Also update home button if not currently set
+            if (!state[`selected${field.charAt(0).toUpperCase() + field.slice(1)}`]) {
+              state[`selected${field.charAt(0).toUpperCase() + field.slice(1)}`] = state.defaults[field];
+              updateAllButtons();
+            }
+
+            closePicker();
+            return;
+          }
+
           if (field === "category") {
             state.selectedCategory = item;
           } else if (field === "from") {
@@ -544,9 +596,9 @@
       currentCents = 0;
       elements.amountInput.value = "";
       elements.descInput.value = "";
-      state.selectedCategory = "";
-      state.selectedFrom = "";
-      state.selectedTo = "";
+      state.selectedCategory = state.defaults.category || "";
+      state.selectedFrom = state.defaults.from || "";
+      state.selectedTo = state.defaults.to || "";
       updateAllButtons();
       setDate(getFormattedDate(new Date()));
       elements.amountInput.focus();
@@ -601,6 +653,8 @@
   // Settings Modal Controls
   function openSettings() {
     elements.scriptUrlInput.value = state.scriptUrl;
+    updateDefaultButtons();
+    updateQueueUI();
     elements.settingsModal.classList.add("open");
   }
 
@@ -682,6 +736,17 @@
   }
   if (elements.btnSelectTo) {
     elements.btnSelectTo.addEventListener("click", () => openPicker("to"));
+  }
+
+  // Default Setting Picker Listeners
+  if (elements.btnDefaultCategory) {
+    elements.btnDefaultCategory.addEventListener("click", () => openPicker("category", true));
+  }
+  if (elements.btnDefaultFrom) {
+    elements.btnDefaultFrom.addEventListener("click", () => openPicker("from", true));
+  }
+  if (elements.btnDefaultTo) {
+    elements.btnDefaultTo.addEventListener("click", () => openPicker("to", true));
   }
   if (elements.pickerBackdrop) {
     elements.pickerBackdrop.addEventListener("click", closePicker);
@@ -776,6 +841,7 @@
   // Init
   setDate(getFormattedDate(new Date()));
   updateAllButtons();
+  updateDefaultButtons();
   updateQueueUI();
 
   if (state.scriptUrl) {
