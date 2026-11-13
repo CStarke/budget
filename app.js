@@ -566,7 +566,6 @@
     // Strict validation: Amount required
     if (currentCents <= 0 || isNaN(amount)) {
       haptic([30, 60, 30]);
-      showToast("Amount is required.", "error");
       const card = elements.amountCard || elements.amountInput.closest(".amount-card");
       highlightError(card);
       elements.amountInput.focus();
@@ -577,7 +576,6 @@
     const desc = elements.descInput.value.trim();
     if (!desc) {
       haptic([30, 60, 30]);
-      showToast("Description is required.", "error");
       highlightError(elements.descInput);
       elements.descInput.focus();
       return;
@@ -586,7 +584,6 @@
     // Strict validation: Category required
     if (!state.selectedCategory) {
       haptic([30, 60, 30]);
-      showToast("Category is required.", "error");
       highlightError(elements.btnSelectCategory);
       openPicker("category");
       return;
@@ -595,7 +592,6 @@
     // Strict validation: From required
     if (!state.selectedFrom) {
       haptic([30, 60, 30]);
-      showToast("From account is required.", "error");
       highlightError(elements.btnSelectFrom);
       openPicker("from");
       return;
@@ -604,7 +600,6 @@
     // Strict validation: To required
     if (!state.selectedTo) {
       haptic([30, 60, 30]);
-      showToast("To destination is required.", "error");
       highlightError(elements.btnSelectTo);
       openPicker("to");
       return;
