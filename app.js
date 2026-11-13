@@ -27,6 +27,7 @@
 
   // DOM Elements
   const elements = {
+    amountCard: document.querySelector(".amount-card"),
     statusDot: document.getElementById("statusDot"),
     statusText: document.getElementById("statusText"),
     amountInput: document.getElementById("amountInput"),
@@ -566,7 +567,8 @@
     if (currentCents <= 0 || isNaN(amount)) {
       haptic([30, 60, 30]);
       showToast("Amount is required.", "error");
-      highlightError(elements.amountInput);
+      const card = elements.amountCard || elements.amountInput.closest(".amount-card");
+      highlightError(card);
       elements.amountInput.focus();
       return;
     }
@@ -765,7 +767,8 @@
   elements.descInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      submitTransaction();
+      elements.descInput.blur();
+      openPicker("category");
     }
   });
 
