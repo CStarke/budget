@@ -73,6 +73,7 @@
     btnSyncQueueNow: document.getElementById("btnSyncQueueNow"),
     btnOpenRecent: document.getElementById("btnOpenRecent"),
     recentModal: document.getElementById("recentModal"),
+    btnRefreshRecent: document.getElementById("btnRefreshRecent"),
     btnCloseRecent: document.getElementById("btnCloseRecent"),
     recentList: document.getElementById("recentList")
   };
@@ -94,13 +95,27 @@
 
   // Helper: Display Date String (e.g., "13 Nov 2026")
   function formatHumanDate(dateStr) {
-    const parts = dateStr.split("-");
-    if (parts.length !== 3) return dateStr;
-    const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-    const day = date.getDate();
-    const month = date.toLocaleString("en-US", { month: "short" });
-    const year = date.getFullYear();
-    return `${day} ${month} ${year}`;
+    if (!dateStr) return "Today";
+    if (typeof dateStr === "string" && dateStr.includes("-")) {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(date.getTime())) {
+          const day = date.getDate();
+          const month = date.toLocaleString("en-US", { month: "short" });
+          const year = date.getFullYear();
+          return `${day} ${month} ${year}`;
+        }
+      }
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const day = d.getDate();
+      const month = d.toLocaleString("en-US", { month: "short" });
+      const year = d.getFullYear();
+      return `${day} ${month} ${year}`;
+    }
+    return String(dateStr);
   }
 
   // Haptic feedback helper
@@ -269,8 +284,39 @@
         btn.textContent = item;
         btn.addEventListener("click", () => {
           if (isIncomeSpendingDisallowed) {
-            haptic([30, 60, 30]);
-            showToast('Cannot have "From: Income" and "To: Spending" together.', "error");
+            haptic(15);
+            if (isDefault) {
+              if (field === "from") {
+                state.defaults.from = item;
+                state.defaults.to = "";
+                localStorage.setItem("budget_default_from", item);
+                localStorage.removeItem("budget_default_to");
+              } else if (field === "to") {
+                state.defaults.to = item;
+                state.defaults.from = "";
+                localStorage.setItem("budget_default_to", item);
+                localStorage.removeItem("budget_default_from");
+              }
+              updateDefaultButtons();
+
+              if (!state[`selected${field.charAt(0).toUpperCase() + field.slice(1)}`]) {
+                state[`selected${field.charAt(0).toUpperCase() + field.slice(1)}`] = state.defaults[field];
+                updateAllButtons();
+              }
+              closePicker();
+              return;
+            }
+
+            // Homescreen selection: select item and clear the opposing field
+            if (field === "from") {
+              state.selectedFrom = item;
+              state.selectedTo = "";
+            } else if (field === "to") {
+              state.selectedTo = item;
+              state.selectedFrom = "";
+            }
+            updateAllButtons();
+            closePicker();
             return;
           }
 
@@ -399,6 +445,13 @@
         if (data.sheetName) {
           state.sheetName = data.sheetName;
           localStorage.setItem("budget_sheet_name", data.sheetName);
+        }
+
+        if (data.recentTransactions && Array.isArray(data.recentTransactions)) {
+          saveRecentTransactions(data.recentTransactions);
+          if (elements.recentModal && elements.recentModal.classList.contains("open")) {
+            renderRecentList();
+          }
         }
 
         updateAllButtons();
@@ -616,11 +669,44 @@
     saveRecentTransactions(list);
   }
 
+  let isFetchingRecent = false;
+  async function fetchRecentTransactionsFromSheet(showFeedback = false) {
+    if (isFetchingRecent || !state.scriptUrl || !navigator.onLine) return;
+    isFetchingRecent = true;
+    if (elements.btnRefreshRecent) {
+      elements.btnRefreshRecent.classList.add("spinning");
+    }
+
+    try {
+      const fetchUrl = `${state.scriptUrl}${state.scriptUrl.includes("?") ? "&" : "?"}action=recent&t=${Date.now()}`;
+      const response = await fetch(fetchUrl);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.success && Array.isArray(data.recentTransactions)) {
+          saveRecentTransactions(data.recentTransactions);
+          renderRecentList();
+          if (showFeedback) {
+            haptic(15);
+            showToast("Recent transactions synced with Sheet.", "info");
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch recent transactions from sheet:", err);
+    } finally {
+      isFetchingRecent = false;
+      if (elements.btnRefreshRecent) {
+        elements.btnRefreshRecent.classList.remove("spinning");
+      }
+    }
+  }
+
   function openRecentModal() {
     renderRecentList();
     if (elements.recentModal) {
       elements.recentModal.classList.add("open");
     }
+    fetchRecentTransactionsFromSheet();
   }
 
   function closeRecentModal() {
@@ -736,6 +822,10 @@
             amount: item.amount
           })
         });
+
+        setTimeout(() => {
+          fetchRecentTransactionsFromSheet();
+        }, 500);
       } catch (e) {
         console.warn("Could not dispatch undo to sheet:", e);
       }
@@ -1072,6 +1162,11 @@
 
   if (elements.btnOpenRecent) {
     elements.btnOpenRecent.addEventListener("click", openRecentModal);
+  }
+  if (elements.btnRefreshRecent) {
+    elements.btnRefreshRecent.addEventListener("click", () => {
+      fetchRecentTransactionsFromSheet(true);
+    });
   }
   if (elements.btnCloseRecent) {
     elements.btnCloseRecent.addEventListener("click", closeRecentModal);
