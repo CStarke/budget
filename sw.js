@@ -5,7 +5,7 @@
  * - When offline: Falls back to cached assets seamlessly.
  */
 
-const CACHE_NAME = "budget-app-v33";
+const CACHE_NAME = "budget-app-v34";
 const APP_SHELL = [
   "./",
   "./index.html",

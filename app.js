@@ -27,6 +27,7 @@
 
   // DOM Elements
   const elements = {
+    brandLogo: document.getElementById("brandLogo"),
     amountCard: document.querySelector(".amount-card"),
     statusDot: document.getElementById("statusDot"),
     statusText: document.getElementById("statusText"),
@@ -1134,6 +1135,31 @@
   }
   if (elements.pickerCancelBtn) {
     elements.pickerCancelBtn.addEventListener("click", closePicker);
+  }
+
+  // Tap Logo to Force App Update & Clear Cache
+  async function forceAppUpdate() {
+    haptic(15);
+    showToast("Refreshing app...", "info");
+    if ("caches" in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) {}
+    }
+    if ("serviceWorker" in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((r) => r.unregister()));
+      } catch (e) {}
+    }
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 300);
+  }
+
+  if (elements.brandLogo) {
+    elements.brandLogo.addEventListener("click", forceAppUpdate);
   }
 
   elements.btnOpenSettings.addEventListener("click", () => {
