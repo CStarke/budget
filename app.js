@@ -184,6 +184,15 @@
     updateButtonDisplay(elements.defaultToBtnText, elements.btnDefaultTo, state.defaults.to, "(None)");
   }
 
+  // Helper to check if an option exists in a field's allowed list
+  function isOptionAllowed(field, optionValue) {
+    if (!optionValue || !String(optionValue).trim()) return false;
+    const allowed = state.options[field] && state.options[field].length > 0 
+      ? state.options[field] 
+      : (DEFAULT_OPTIONS[field] || []);
+    return allowed.some((opt) => opt.trim().toLowerCase() === optionValue.trim().toLowerCase());
+  }
+
   // Active Picker Modal State
   let activePickerField = null;
 
@@ -249,24 +258,24 @@
               localStorage.removeItem(`budget_default_${field}`);
               showToast(`Default for ${field} cleared.`, "success");
             } else if (isConflicting) {
-              // Swap default From and To
+              // Swap default From and To (clearing if not a valid option for destination field)
               if (field === "from") {
                 const prevFrom = state.defaults.from;
                 state.defaults.from = item;
-                state.defaults.to = prevFrom;
+                state.defaults.to = isOptionAllowed("to", prevFrom) ? prevFrom : "";
                 localStorage.setItem("budget_default_from", item);
-                if (prevFrom) {
-                  localStorage.setItem("budget_default_to", prevFrom);
+                if (state.defaults.to) {
+                  localStorage.setItem("budget_default_to", state.defaults.to);
                 } else {
                   localStorage.removeItem("budget_default_to");
                 }
               } else if (field === "to") {
                 const prevTo = state.defaults.to;
                 state.defaults.to = item;
-                state.defaults.from = prevTo;
+                state.defaults.from = isOptionAllowed("from", prevTo) ? prevTo : "";
                 localStorage.setItem("budget_default_to", item);
-                if (prevTo) {
-                  localStorage.setItem("budget_default_from", prevTo);
+                if (state.defaults.from) {
+                  localStorage.setItem("budget_default_from", state.defaults.from);
                 } else {
                   localStorage.removeItem("budget_default_from");
                 }
@@ -291,15 +300,15 @@
 
           // Main Homescreen Selection
           if (isConflicting) {
-            // Swap From and To entries
+            // Swap From and To entries (clearing if not a valid option for destination field)
             if (field === "from") {
               const prevFrom = state.selectedFrom;
               state.selectedFrom = item;
-              state.selectedTo = prevFrom;
+              state.selectedTo = isOptionAllowed("to", prevFrom) ? prevFrom : "";
             } else if (field === "to") {
               const prevTo = state.selectedTo;
               state.selectedTo = item;
-              state.selectedFrom = prevTo;
+              state.selectedFrom = isOptionAllowed("from", prevTo) ? prevTo : "";
             }
             showToast("Swapped From and To.", "success");
           } else {
