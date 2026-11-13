@@ -111,7 +111,7 @@ body {
 
 .status-dot.syncing {
   background-color: var(--accent-blue);
-  animation: pulse 1s infinite alternate;
+  animation: pulse 500ms infinite alternate;
 }
 
 .header-actions {
@@ -319,7 +319,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .category-label {
@@ -329,7 +329,7 @@ body {
   color: var(--text-secondary);
   font-weight: 600;
   margin-bottom: 6px;
-  text-align: center;
+  text-align: left;
   width: 100%;
 }
 
