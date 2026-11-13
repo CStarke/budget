@@ -70,7 +70,11 @@
     queueBadge: document.getElementById("queueBadge"),
     queueCount: document.getElementById("queueCount"),
     queueStatusText: document.getElementById("queueStatusText"),
-    btnSyncQueueNow: document.getElementById("btnSyncQueueNow")
+    btnSyncQueueNow: document.getElementById("btnSyncQueueNow"),
+    btnOpenRecent: document.getElementById("btnOpenRecent"),
+    recentModal: document.getElementById("recentModal"),
+    btnCloseRecent: document.getElementById("btnCloseRecent"),
+    recentList: document.getElementById("recentList")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -559,6 +563,165 @@
     }
   }
 
+  // Recent Transactions Storage & Manager (Last 5 Entries)
+  const RECENT_TXS_KEY = "budget_recent_txs";
+
+  function getRecentTransactions() {
+    try {
+      return JSON.parse(localStorage.getItem(RECENT_TXS_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveRecentTransactions(txs) {
+    try {
+      localStorage.setItem(RECENT_TXS_KEY, JSON.stringify(txs.slice(0, 5)));
+    } catch (e) {
+      console.error("Failed to save recent transactions:", e);
+    }
+  }
+
+  function addRecentTransaction(tx) {
+    const list = getRecentTransactions();
+    const item = {
+      id: "rc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
+      timestamp: Date.now(),
+      ...tx
+    };
+    list.unshift(item);
+    saveRecentTransactions(list);
+  }
+
+  function removeRecentTransaction(id) {
+    const list = getRecentTransactions().filter((item) => item.id !== id);
+    saveRecentTransactions(list);
+  }
+
+  function openRecentModal() {
+    renderRecentList();
+    if (elements.recentModal) {
+      elements.recentModal.classList.add("open");
+    }
+  }
+
+  function closeRecentModal() {
+    if (elements.recentModal) {
+      elements.recentModal.classList.remove("open");
+    }
+  }
+
+  function renderRecentList() {
+    if (!elements.recentList) return;
+    elements.recentList.innerHTML = "";
+
+    const list = getRecentTransactions();
+    if (!list || list.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "recent-empty";
+      empty.textContent = "No recent transactions logged yet.";
+      elements.recentList.appendChild(empty);
+      return;
+    }
+
+    list.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "recent-item";
+
+      const info = document.createElement("div");
+      info.className = "recent-info";
+
+      const desc = document.createElement("div");
+      desc.className = "recent-desc";
+      desc.textContent = item.description || "Untitled";
+
+      const meta = document.createElement("div");
+      meta.className = "recent-meta";
+      const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
+      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"} · ${item.from || "—"} → ${item.to || "—"}`;
+
+      info.appendChild(desc);
+      info.appendChild(meta);
+
+      const right = document.createElement("div");
+      right.className = "recent-right";
+
+      const amt = document.createElement("div");
+      amt.className = "recent-amount";
+      amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
+
+      right.appendChild(amt);
+
+      // Only the most recent entry has the Undo button
+      if (index === 0) {
+        const undoBtn = document.createElement("button");
+        undoBtn.type = "button";
+        undoBtn.className = "btn-undo-recent";
+        undoBtn.textContent = "Undo";
+        undoBtn.addEventListener("click", () => undoTransaction(item));
+        right.appendChild(undoBtn);
+      }
+
+      row.appendChild(info);
+      row.appendChild(right);
+      elements.recentList.appendChild(row);
+    });
+  }
+
+  async function undoTransaction(item) {
+    haptic([25, 50, 25]);
+
+    // 1. Remove from recent list
+    removeRecentTransaction(item.id);
+
+    // 2. Remove from offline queue if it hasn't synced yet
+    const queue = getOfflineQueue();
+    const filteredQueue = queue.filter(
+      (q) => !(q.description === item.description && Math.abs(q.amount - item.amount) < 0.01 && q.date === item.date)
+    );
+    if (filteredQueue.length !== queue.length) {
+      saveOfflineQueue(filteredQueue);
+      updateQueueUI();
+    }
+
+    // 3. Dispatch undo request to Google Sheet if online
+    if (navigator.onLine && state.scriptUrl) {
+      try {
+        await fetch(state.scriptUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify({
+            action: "undo",
+            date: item.date,
+            description: item.description,
+            amount: item.amount
+          })
+        });
+      } catch (e) {
+        console.warn("Could not dispatch undo to sheet:", e);
+      }
+    }
+
+    // 4. Restore values into form for easy editing
+    currentCents = Math.round(parseFloat(item.amount) * 100);
+    elements.amountInput.value = formatCentsWithCommas(currentCents);
+    elements.descInput.value = item.description || "";
+    state.selectedCategory = item.category || "";
+    state.selectedFrom = item.from || "";
+    state.selectedTo = item.to || "";
+    if (item.date) {
+      setDate(item.date);
+    }
+    updateAllButtons();
+
+    closeRecentModal();
+    showToast("Transaction undone & restored to form.", "success");
+    elements.amountInput.focus();
+  }
+
   // Submit Transaction
   async function submitTransaction() {
     const amount = currentCents / 100;
@@ -646,6 +809,7 @@
     // Offline check: queue immediately if offline
     if (!navigator.onLine) {
       const pendingCount = enqueueTransaction(payload);
+      addRecentTransaction(payload);
       haptic([20, 50, 20]);
       showToast(`Saved offline (${pendingCount} pending). Will sync when online.`, "success");
       resetFormFields();
@@ -671,6 +835,7 @@
       haptic([25, 60, 25]);
       const formattedAmount = "$" + amount.toFixed(2);
       showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
+      addRecentTransaction(payload);
       resetFormFields();
 
       // Trigger queue process in case older items exist
@@ -680,6 +845,7 @@
     } catch (err) {
       console.warn("Submission error, saving to offline queue:", err);
       const pendingCount = enqueueTransaction(payload);
+      addRecentTransaction(payload);
       haptic([20, 50, 20]);
       showToast(`Saved offline (${pendingCount} pending). Will sync automatically.`, "success");
       resetFormFields();
@@ -860,6 +1026,20 @@
       processOfflineQueue();
     }
   });
+
+  if (elements.btnOpenRecent) {
+    elements.btnOpenRecent.addEventListener("click", openRecentModal);
+  }
+  if (elements.btnCloseRecent) {
+    elements.btnCloseRecent.addEventListener("click", closeRecentModal);
+  }
+  if (elements.recentModal) {
+    elements.recentModal.addEventListener("click", (e) => {
+      if (e.target === elements.recentModal) {
+        closeRecentModal();
+      }
+    });
+  }
 
   elements.settingsModal.addEventListener("click", (e) => {
     if (e.target === elements.settingsModal) {

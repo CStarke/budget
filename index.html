@@ -136,6 +136,7 @@
           </svg>
           <span id="btnSubmitText">Add Transaction</span>
         </button>
+        <button type="button" class="recent-trigger-btn" id="btnOpenRecent">Recent Transactions</button>
       </div>
     </main>
 
@@ -229,6 +230,19 @@
           </svg>
           Force App Refresh / Update
         </button>
+      </div>
+    </div>
+
+    <!-- Recent Transactions Modal Bottom Sheet -->
+    <div class="modal-overlay" id="recentModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <h2 class="modal-title">Recent Transactions</h2>
+          <button class="btn-close" id="btnCloseRecent">&times;</button>
+        </div>
+        <div class="recent-list" id="recentList">
+          <!-- Rendered dynamically -->
+        </div>
       </div>
     </div>
   </div>
