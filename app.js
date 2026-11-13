@@ -142,7 +142,7 @@
   }
 
   // Update Selector Button Display
-  function updateButtonDisplay(textElem, buttonElem, value, defaultPlaceholder) {
+  function updateButtonDisplay(textElem, buttonElem, value) {
     if (!textElem || !buttonElem) return;
     if (value && String(value).trim().length > 0) {
       textElem.textContent = value;
@@ -150,7 +150,7 @@
       buttonElem.classList.add("has-value");
       buttonElem.classList.add("active");
     } else {
-      textElem.textContent = defaultPlaceholder || "Select one";
+      textElem.textContent = "Select one";
       textElem.className = "pill-text placeholder";
       buttonElem.classList.remove("has-value");
       buttonElem.classList.remove("active");
@@ -158,9 +158,9 @@
   }
 
   function updateAllButtons() {
-    updateButtonDisplay(elements.catBtnText, elements.btnSelectCategory, state.selectedCategory, "Category");
-    updateButtonDisplay(elements.fromBtnText, elements.btnSelectFrom, state.selectedFrom, "From");
-    updateButtonDisplay(elements.toBtnText, elements.btnSelectTo, state.selectedTo, "To");
+    updateButtonDisplay(elements.catBtnText, elements.btnSelectCategory, state.selectedCategory);
+    updateButtonDisplay(elements.fromBtnText, elements.btnSelectFrom, state.selectedFrom);
+    updateButtonDisplay(elements.toBtnText, elements.btnSelectTo, state.selectedTo);
   }
 
   // Active Picker Modal State

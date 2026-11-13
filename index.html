@@ -103,15 +103,24 @@
       <!-- Category, From, To Horizontal Row (Shaped like Date Buttons) -->
       <section class="form-section">
         <div class="category-grid">
-          <button type="button" class="date-pill selector-pill" id="btnSelectCategory">
-            <span class="pill-text placeholder" id="catBtnText">Category</span>
-          </button>
-          <button type="button" class="date-pill selector-pill" id="btnSelectFrom">
-            <span class="pill-text placeholder" id="fromBtnText">From</span>
-          </button>
-          <button type="button" class="date-pill selector-pill" id="btnSelectTo">
-            <span class="pill-text placeholder" id="toBtnText">To</span>
-          </button>
+          <div class="category-col">
+            <div class="category-label">Category</div>
+            <button type="button" class="date-pill selector-pill" id="btnSelectCategory">
+              <span class="pill-text placeholder" id="catBtnText">Select one</span>
+            </button>
+          </div>
+          <div class="category-col">
+            <div class="category-label">From</div>
+            <button type="button" class="date-pill selector-pill" id="btnSelectFrom">
+              <span class="pill-text placeholder" id="fromBtnText">Select one</span>
+            </button>
+          </div>
+          <div class="category-col">
+            <div class="category-label">To</div>
+            <button type="button" class="date-pill selector-pill" id="btnSelectTo">
+              <span class="pill-text placeholder" id="toBtnText">Select one</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -159,7 +168,7 @@
             placeholder="https://script.google.com/macros/s/.../exec"
           >
           <p class="settings-tip">
-            In your Google Sheet, go to <b>Extensions &gt; Apps Script</b>, paste the script code, click <b>Deploy &gt; New deployment &gt; Web app</b>, and paste the URL here.
+            In your Google Sheet, go to <b>Extensions &gt; Apps Script</b>, paste the script code, click <b>Deploy &gt; New deployment &gt; Web app</b>, and paste the URL.
           </p>
         </div>
 

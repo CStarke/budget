@@ -314,11 +314,28 @@ body {
   width: 100%;
 }
 
-.selector-pill {
+.category-col {
   flex: 1;
   min-width: 0;
-  width: auto;
-  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.category-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-bottom: 6px;
+  text-align: center;
+  width: 100%;
+}
+
+.selector-pill {
+  width: 100%;
+  padding: 10px 6px;
   font-size: 13px;
   font-weight: 600;
   text-align: center;
