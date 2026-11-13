@@ -74,7 +74,7 @@
     btnOpenRecent: document.getElementById("btnOpenRecent"),
     recentModal: document.getElementById("recentModal"),
     btnRefreshRecent: document.getElementById("btnRefreshRecent"),
-    btnCloseRecent: document.getElementById("btnCloseRecent"),
+    btnUndoRecent: document.getElementById("btnUndoRecent"),
     recentList: document.getElementById("recentList")
   };
 
@@ -739,6 +739,10 @@
     elements.recentList.innerHTML = "";
 
     const list = getRecentTransactions();
+    if (elements.btnUndoRecent) {
+      elements.btnUndoRecent.style.display = (list && list.length > 0) ? "inline-flex" : "none";
+    }
+
     if (!list || list.length === 0) {
       const empty = document.createElement("div");
       empty.className = "recent-empty";
@@ -791,17 +795,6 @@
       }
 
       right.appendChild(amt);
-
-      // Only the most recent entry has the Undo button
-      if (index === 0) {
-        const undoBtn = document.createElement("button");
-        undoBtn.type = "button";
-        undoBtn.className = "btn-undo-recent";
-        undoBtn.textContent = "Undo";
-        undoBtn.addEventListener("click", () => undoTransaction(item));
-        right.appendChild(undoBtn);
-      }
-
       row.appendChild(info);
       row.appendChild(right);
       elements.recentList.appendChild(row);
@@ -1189,8 +1182,15 @@
       fetchRecentTransactionsFromSheet(true);
     });
   }
-  if (elements.btnCloseRecent) {
-    elements.btnCloseRecent.addEventListener("click", closeRecentModal);
+  if (elements.btnUndoRecent) {
+    elements.btnUndoRecent.addEventListener("click", () => {
+      const list = getRecentTransactions();
+      if (list && list.length > 0) {
+        undoTransaction(list[0]);
+      } else {
+        showToast("No transaction to undo.", "info");
+      }
+    });
   }
   if (elements.recentModal) {
     elements.recentModal.addEventListener("click", (e) => {
