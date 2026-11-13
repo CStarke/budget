@@ -333,18 +333,14 @@
     }
 
     // Strict validation: Description required
-    let rawDesc = elements.descInput.value.trim();
-    if (!rawDesc) {
+    const desc = elements.descInput.value.trim();
+    if (!desc) {
       haptic([30, 60, 30]);
       showToast("Description is required.", "error");
       highlightError(elements.descInput);
       elements.descInput.focus();
       return;
     }
-
-    // Auto-capitalize first word
-    const desc = rawDesc.charAt(0).toUpperCase() + rawDesc.slice(1);
-    elements.descInput.value = desc;
 
     // Strict validation: Category required
     if (!state.selectedCategory) {
@@ -514,21 +510,6 @@
     if (e.key === "Enter") {
       e.preventDefault();
       submitTransaction();
-    }
-  });
-
-  // Auto-capitalize first letter of description while typing or on blur
-  elements.descInput.addEventListener("input", () => {
-    const val = elements.descInput.value;
-    if (val.length === 1 && val !== val.toUpperCase()) {
-      elements.descInput.value = val.toUpperCase();
-    }
-  });
-
-  elements.descInput.addEventListener("blur", () => {
-    const val = elements.descInput.value.trim();
-    if (val.length > 0) {
-      elements.descInput.value = val.charAt(0).toUpperCase() + val.slice(1);
     }
   });
 
