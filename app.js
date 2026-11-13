@@ -671,33 +671,52 @@
 
   let isFetchingRecent = false;
   async function fetchRecentTransactionsFromSheet(showFeedback = false) {
-    if (isFetchingRecent || !state.scriptUrl || !navigator.onLine) return;
+    if (!state.scriptUrl) {
+      if (showFeedback) showToast("Please configure Google Script URL in Settings.", "error");
+      return;
+    }
+    if (!navigator.onLine) {
+      if (showFeedback) showToast("Offline: showing saved transactions.", "info");
+      return;
+    }
+    if (isFetchingRecent) return;
+
     isFetchingRecent = true;
     if (elements.btnRefreshRecent) {
       elements.btnRefreshRecent.classList.add("spinning");
     }
+    renderRecentList();
 
     try {
       const fetchUrl = `${state.scriptUrl}${state.scriptUrl.includes("?") ? "&" : "?"}action=recent&t=${Date.now()}`;
       const response = await fetch(fetchUrl);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.success && Array.isArray(data.recentTransactions)) {
-          saveRecentTransactions(data.recentTransactions);
-          renderRecentList();
-          if (showFeedback) {
-            haptic(15);
-            showToast("Recent transactions synced with Sheet.", "info");
-          }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      if (data && data.success && Array.isArray(data.recentTransactions)) {
+        saveRecentTransactions(data.recentTransactions);
+        renderRecentList();
+        if (showFeedback) {
+          haptic(15);
+          showToast(`Synced ${data.recentTransactions.length} transaction${data.recentTransactions.length === 1 ? "" : "s"} from Sheet.`, "info");
+        }
+      } else if (data && data.error) {
+        console.warn("Sheet returned error:", data.error);
+        if (showFeedback) {
+          showToast(`Sheet: ${data.error}`, "error");
         }
       }
     } catch (err) {
       console.warn("Failed to fetch recent transactions from sheet:", err);
+      if (showFeedback) {
+        showToast("Could not connect to Sheet. Check your URL.", "error");
+      }
     } finally {
       isFetchingRecent = false;
       if (elements.btnRefreshRecent) {
         elements.btnRefreshRecent.classList.remove("spinning");
       }
+      renderRecentList();
     }
   }
 
@@ -723,7 +742,9 @@
     if (!list || list.length === 0) {
       const empty = document.createElement("div");
       empty.className = "recent-empty";
-      empty.textContent = "No recent transactions logged yet.";
+      empty.textContent = isFetchingRecent 
+        ? "Loading recent transactions from Sheet..." 
+        : "No recent transactions found.";
       elements.recentList.appendChild(empty);
       return;
     }
