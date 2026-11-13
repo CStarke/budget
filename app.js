@@ -240,22 +240,40 @@
     } else {
       items.forEach((item) => {
         let isConflicting = false;
+        let isIncomeSpendingDisallowed = false;
+
+        const itemLower = item.trim().toLowerCase();
+
         if (!isDefault) {
-          isConflicting = (field === "from" && state.selectedTo && item.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) ||
-                          (field === "to" && state.selectedFrom && item.trim().toLowerCase() === state.selectedFrom.trim().toLowerCase());
+          isConflicting = (field === "from" && state.selectedTo && itemLower === state.selectedTo.trim().toLowerCase()) ||
+                          (field === "to" && state.selectedFrom && itemLower === state.selectedFrom.trim().toLowerCase());
+          
+          isIncomeSpendingDisallowed = 
+            (field === "from" && itemLower === "income" && state.selectedTo && state.selectedTo.trim().toLowerCase() === "spending") ||
+            (field === "to" && itemLower === "spending" && state.selectedFrom && state.selectedFrom.trim().toLowerCase() === "income");
         } else if (item !== "(None)") {
-          isConflicting = (field === "from" && state.defaults.to && item.trim().toLowerCase() === state.defaults.to.trim().toLowerCase()) ||
-                          (field === "to" && state.defaults.from && item.trim().toLowerCase() === state.defaults.from.trim().toLowerCase());
+          isConflicting = (field === "from" && state.defaults.to && itemLower === state.defaults.to.trim().toLowerCase()) ||
+                          (field === "to" && state.defaults.from && itemLower === state.defaults.from.trim().toLowerCase());
+
+          isIncomeSpendingDisallowed = 
+            (field === "from" && itemLower === "income" && state.defaults.to && state.defaults.to.trim().toLowerCase() === "spending") ||
+            (field === "to" && itemLower === "spending" && state.defaults.from && state.defaults.from.trim().toLowerCase() === "income");
         }
 
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = `picker-option ${item === currentValue ? "active" : ""}`;
-        if (isConflicting) {
+        if (isConflicting || isIncomeSpendingDisallowed) {
           btn.style.opacity = "0.35";
         }
         btn.textContent = item;
         btn.addEventListener("click", () => {
+          if (isIncomeSpendingDisallowed) {
+            haptic([30, 60, 30]);
+            showToast('Cannot have "From: Income" and "To: Spending" together.', "error");
+            return;
+          }
+
           haptic(15);
           if (isDefault) {
             if (item === "(None)") {
@@ -638,7 +656,7 @@
       const meta = document.createElement("div");
       meta.className = "recent-meta";
       const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
-      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"} · ${item.from || "—"} → ${item.to || "—"}`;
+      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}`;
 
       info.appendChild(desc);
       info.appendChild(meta);
@@ -649,6 +667,21 @@
       const amt = document.createElement("div");
       amt.className = "recent-amount";
       amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
+
+      // Color coding:
+      // Red if "To" was spending
+      // Green if "From" was income
+      // Yellow if neither
+      const toVal = (item.to || "").trim().toLowerCase();
+      const fromVal = (item.from || "").trim().toLowerCase();
+
+      if (toVal === "spending") {
+        amt.style.color = "#f87171"; // Red
+      } else if (fromVal === "income") {
+        amt.style.color = "#34d399"; // Green
+      } else {
+        amt.style.color = "#facc15"; // Yellow
+      }
 
       right.appendChild(amt);
 
@@ -771,7 +804,14 @@
     // Strict validation: From and To cannot be the same
     if (state.selectedFrom.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) {
       haptic([30, 60, 30]);
-      showToast('"From" and "To" cannot be the same.', "error");
+      highlightError(elements.btnSelectFrom);
+      highlightError(elements.btnSelectTo);
+      return;
+    }
+
+    // Strict validation: From cannot be Income and To cannot be Spending at the same time
+    if (state.selectedFrom.trim().toLowerCase() === "income" && state.selectedTo.trim().toLowerCase() === "spending") {
+      haptic([30, 60, 30]);
       highlightError(elements.btnSelectFrom);
       highlightError(elements.btnSelectTo);
       return;

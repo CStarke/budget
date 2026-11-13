@@ -1,11 +1,11 @@
 /**
- * Service Worker for "Budget" App (v21)
+ * Service Worker for "Budget" App (v22)
  * Network-First with Cache Fallback strategy:
  * - When online: Always loads the freshest version and updates cache in background.
  * - When offline: Falls back to cached assets seamlessly.
  */
 
-const CACHE_NAME = "budget-app-v21";
+const CACHE_NAME = "budget-app-v22";
 const APP_SHELL = [
   "./",
   "./index.html",
