@@ -1,18 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
+    <!-- Invisible circular mask that slices the bottom-left tail -->
     <clipPath id="circleClip">
-      <circle cx="256" cy="256" r="236" />
+      <circle cx="256" cy="256" r="250" />
     </clipPath>
   </defs>
 
-  <!-- Circular Frame -->
-  <circle cx="256" cy="256" r="236" fill="none" stroke="#10b981" stroke-width="22" />
-
-  <!-- Stocks Trend Arrow: Up & Right -> Down Once -> Up & Right (Clipped in bottom-left) -->
+  <!-- Scaled-Up Stocks Trend Arrow (cut off in the bottom-left by invisible circle) -->
   <g clip-path="url(#circleClip)">
-    <!-- Main Trend Zig-zag Line -->
-    <polyline points="45,415 205,230 275,295 405,135" fill="none" stroke="#10b981" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Main Trend Line: bottom-left cut off -> peak -> dip -> surge -->
+    <polyline points="20,440 190,220 270,290 430,110" fill="none" stroke="#10b981" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
     <!-- Arrowhead at Top-Right -->
-    <polyline points="320,135 405,135 405,220" fill="none" stroke="#10b981" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+    <polyline points="330,110 430,110 430,210" fill="none" stroke="#10b981" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
   </g>
 </svg>
