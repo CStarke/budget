@@ -32,9 +32,17 @@
     customDateLabel: document.getElementById("customDateLabel"),
     datePicker: document.getElementById("datePicker"),
     descInput: document.getElementById("descInput"),
-    categoryChips: document.getElementById("categoryChips"),
-    fromChips: document.getElementById("fromChips"),
-    toChips: document.getElementById("toChips"),
+    btnSelectCategory: document.getElementById("btnSelectCategory"),
+    catBtnText: document.getElementById("catBtnText"),
+    btnSelectFrom: document.getElementById("btnSelectFrom"),
+    fromBtnText: document.getElementById("fromBtnText"),
+    btnSelectTo: document.getElementById("btnSelectTo"),
+    toBtnText: document.getElementById("toBtnText"),
+    pickerOverlay: document.getElementById("pickerOverlay"),
+    pickerBackdrop: document.getElementById("pickerBackdrop"),
+    pickerTitle: document.getElementById("pickerTitle"),
+    pickerList: document.getElementById("pickerList"),
+    pickerCancelBtn: document.getElementById("pickerCancelBtn"),
     btnSubmit: document.getElementById("btnSubmit"),
     btnSubmitText: document.getElementById("btnSubmitText"),
     toast: document.getElementById("toast"),
@@ -133,46 +141,96 @@
     }
   }
 
-  // Render Chip Clouds
-  function renderChips(container, items, stateKey, onSelect) {
-    container.innerHTML = "";
-    if (!items || items.length === 0) {
-      const emptySpan = document.createElement("span");
-      emptySpan.className = "chip-empty";
-      emptySpan.textContent = "No chips found";
-      container.appendChild(emptySpan);
-      return;
+  // Update Selector Button Display
+  function updateButtonDisplay(textElem, buttonElem, value) {
+    if (value && String(value).trim().length > 0) {
+      textElem.textContent = value;
+      textElem.className = "selector-text selected";
+      buttonElem.classList.add("has-value");
+    } else {
+      textElem.textContent = "Select one";
+      textElem.className = "selector-text placeholder";
+      buttonElem.classList.remove("has-value");
     }
-
-    items.forEach((item) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = `chip ${state[stateKey] === item ? "active" : ""}`;
-      chip.textContent = item;
-
-      chip.addEventListener("click", () => {
-        haptic(10);
-        if (state[stateKey] === item) {
-          state[stateKey] = ""; // deselect
-        } else {
-          state[stateKey] = item;
-        }
-        renderAllChips();
-        if (onSelect) onSelect(state[stateKey]);
-      });
-
-      container.appendChild(chip);
-    });
   }
 
-  function renderAllChips() {
-    const cats = state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category;
-    const froms = state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from;
-    const tos = state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to;
+  function updateAllButtons() {
+    updateButtonDisplay(elements.catBtnText, elements.btnSelectCategory, state.selectedCategory);
+    updateButtonDisplay(elements.fromBtnText, elements.btnSelectFrom, state.selectedFrom);
+    updateButtonDisplay(elements.toBtnText, elements.btnSelectTo, state.selectedTo);
+  }
 
-    renderChips(elements.categoryChips, cats, "selectedCategory");
-    renderChips(elements.fromChips, froms, "selectedFrom");
-    renderChips(elements.toChips, tos, "selectedTo");
+  // Active Picker Modal State
+  let activePickerField = null;
+
+  function openPicker(field) {
+    activePickerField = field;
+    elements.pickerList.innerHTML = "";
+
+    let title = "Select Option";
+    let items = [];
+    let currentValue = "";
+
+    if (field === "category") {
+      title = "Select Category";
+      items = state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category;
+      currentValue = state.selectedCategory;
+    } else if (field === "from") {
+      title = "Select Account (From)";
+      items = state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from;
+      currentValue = state.selectedFrom;
+    } else if (field === "to") {
+      title = "Select Payee / Destination (To)";
+      items = state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to;
+      currentValue = state.selectedTo;
+    }
+
+    elements.pickerTitle.textContent = title;
+
+    if (!items || items.length === 0) {
+      const emptyDiv = document.createElement("div");
+      emptyDiv.style.color = "var(--text-muted)";
+      emptyDiv.style.fontSize = "14px";
+      emptyDiv.style.padding = "10px";
+      emptyDiv.textContent = "No options available";
+      elements.pickerList.appendChild(emptyDiv);
+    } else {
+      items.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `picker-option ${item === currentValue ? "active" : ""}`;
+        btn.textContent = item;
+        btn.addEventListener("click", () => {
+          haptic(12);
+          if (field === "category") {
+            state.selectedCategory = item;
+          } else if (field === "from") {
+            state.selectedFrom = item;
+          } else if (field === "to") {
+            state.selectedTo = item;
+          }
+          updateAllButtons();
+          closePicker();
+        });
+        elements.pickerList.appendChild(btn);
+      });
+    }
+
+    elements.pickerOverlay.classList.add("open");
+    haptic(10);
+  }
+
+  function closePicker() {
+    elements.pickerOverlay.classList.remove("open");
+    activePickerField = null;
+  }
+
+  function highlightError(element) {
+    if (!element) return;
+    element.classList.add("field-error");
+    setTimeout(() => {
+      element.classList.remove("field-error");
+    }, 1200);
   }
 
   // Fetch Dropdown Chips from Google Apps Script
@@ -208,7 +266,7 @@
           localStorage.setItem("budget_sheet_name", data.sheetName);
         }
 
-        renderAllChips();
+        updateAllButtons();
         updateStatus("online", `Connected: ${state.sheetName}`);
         if (showNotification) {
           showToast(`Synced with ${state.sheetName}!`, "success");
@@ -264,10 +322,49 @@
   async function submitTransaction() {
     const amount = currentCents / 100;
 
+    // Strict validation: Amount required
     if (currentCents <= 0 || isNaN(amount)) {
-      haptic(40);
-      showToast("Please enter a valid amount.", "error");
+      haptic([30, 60, 30]);
+      showToast("Amount is required.", "error");
+      highlightError(elements.amountInput);
       elements.amountInput.focus();
+      return;
+    }
+
+    // Strict validation: Description required
+    const desc = elements.descInput.value.trim();
+    if (!desc) {
+      haptic([30, 60, 30]);
+      showToast("Description is required.", "error");
+      highlightError(elements.descInput);
+      elements.descInput.focus();
+      return;
+    }
+
+    // Strict validation: Category required
+    if (!state.selectedCategory) {
+      haptic([30, 60, 30]);
+      showToast("Category is required.", "error");
+      highlightError(elements.btnSelectCategory);
+      openPicker("category");
+      return;
+    }
+
+    // Strict validation: From required
+    if (!state.selectedFrom) {
+      haptic([30, 60, 30]);
+      showToast("From account is required.", "error");
+      highlightError(elements.btnSelectFrom);
+      openPicker("from");
+      return;
+    }
+
+    // Strict validation: To required
+    if (!state.selectedTo) {
+      haptic([30, 60, 30]);
+      showToast("To destination is required.", "error");
+      highlightError(elements.btnSelectTo);
+      openPicker("to");
       return;
     }
 
@@ -280,7 +377,7 @@
 
     const payload = {
       date: state.selectedDate,
-      description: elements.descInput.value.trim(),
+      description: desc,
       category: state.selectedCategory,
       from: state.selectedFrom,
       to: state.selectedTo,
@@ -315,9 +412,11 @@
         currentCents = 0;
         elements.amountInput.value = "";
         elements.descInput.value = "";
+        state.selectedCategory = "";
+        state.selectedFrom = "";
+        state.selectedTo = "";
+        updateAllButtons();
         setDate(getFormattedDate(new Date())); // reset to today
-
-        // Keep category or reset
         elements.amountInput.focus();
       } else {
         throw new Error(result.error || "Failed to save entry");
@@ -407,6 +506,23 @@
     }
   });
 
+  // Option Picker Listeners
+  if (elements.btnSelectCategory) {
+    elements.btnSelectCategory.addEventListener("click", () => openPicker("category"));
+  }
+  if (elements.btnSelectFrom) {
+    elements.btnSelectFrom.addEventListener("click", () => openPicker("from"));
+  }
+  if (elements.btnSelectTo) {
+    elements.btnSelectTo.addEventListener("click", () => openPicker("to"));
+  }
+  if (elements.pickerBackdrop) {
+    elements.pickerBackdrop.addEventListener("click", closePicker);
+  }
+  if (elements.pickerCancelBtn) {
+    elements.pickerCancelBtn.addEventListener("click", closePicker);
+  }
+
   // Force App Update & Clear Cache
   async function forceAppUpdate() {
     haptic(20);
@@ -455,7 +571,7 @@
 
   // Init
   setDate(getFormattedDate(new Date()));
-  renderAllChips();
+  updateAllButtons();
 
   if (state.scriptUrl) {
     syncOptions(false);
