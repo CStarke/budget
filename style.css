@@ -307,29 +307,18 @@ body {
   margin-left: 2px;
 }
 
-/* Horizontal 3-Column Category Grid */
+/* Horizontal 3-Button Category Row */
 .category-grid {
   display: flex;
   gap: 8px;
   width: 100%;
 }
 
-.category-col {
+.selector-pill {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.category-col .section-label {
-  font-size: 11px;
-  margin-bottom: 6px;
-  letter-spacing: 0.5px;
-}
-
-.selector-pill {
-  width: 100%;
-  padding: 10px 6px;
+  width: auto;
+  padding: 10px 8px;
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -411,6 +400,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
   transform: scale(0.92);
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -420,28 +410,16 @@ body {
   transform: scale(1);
 }
 
-.picker-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 2px;
-}
-
-.picker-subtitle {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 18px;
-}
-
 .picker-list {
   width: 100%;
-  max-height: 55vh;
+  max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 4px 6px;
+  gap: 4px;
+  padding: 8px 0;
   scrollbar-width: none;
 }
 
@@ -451,49 +429,41 @@ body {
 
 .picker-option {
   width: 100%;
-  max-width: 290px;
-  background: rgba(30, 41, 59, 0.75);
-  border: 1px solid var(--border-color);
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 600;
-  padding: 13px 20px;
+  max-width: 320px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #e2e8f0;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.25;
+  padding: 7px 14px;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.picker-option:hover,
+.picker-option:focus {
+  color: #ffffff;
 }
 
 .picker-option:active {
-  transform: scale(0.96);
-  background: var(--accent-emerald-dark);
-  border-color: var(--accent-emerald);
+  transform: scale(1.08);
+  color: var(--accent-emerald);
 }
 
 .picker-option.active {
-  background: rgba(16, 185, 129, 0.22);
-  border-color: var(--accent-emerald);
-  color: var(--accent-emerald);
-  box-shadow: 0 0 16px var(--accent-emerald-glow);
-}
-
-.picker-cancel-btn {
-  margin-top: 18px;
   background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 9px 24px;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.picker-cancel-btn:active {
-  transform: scale(0.95);
-  color: #ffffff;
+  border: none;
+  box-shadow: none;
+  color: var(--accent-emerald);
+  font-weight: 700;
+  font-size: 19px;
+  text-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
 }
 
 /* Field Error Highlight */

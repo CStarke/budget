@@ -103,24 +103,15 @@
       <!-- Category, From, To Horizontal Row (Shaped like Date Buttons) -->
       <section class="form-section">
         <div class="category-grid">
-          <div class="category-col">
-            <div class="section-label">Category</div>
-            <button type="button" class="date-pill selector-pill" id="btnSelectCategory">
-              <span class="pill-text placeholder" id="catBtnText">Category</span>
-            </button>
-          </div>
-          <div class="category-col">
-            <div class="section-label">From</div>
-            <button type="button" class="date-pill selector-pill" id="btnSelectFrom">
-              <span class="pill-text placeholder" id="fromBtnText">From</span>
-            </button>
-          </div>
-          <div class="category-col">
-            <div class="section-label">To</div>
-            <button type="button" class="date-pill selector-pill" id="btnSelectTo">
-              <span class="pill-text placeholder" id="toBtnText">To</span>
-            </button>
-          </div>
+          <button type="button" class="date-pill selector-pill" id="btnSelectCategory">
+            <span class="pill-text placeholder" id="catBtnText">Category</span>
+          </button>
+          <button type="button" class="date-pill selector-pill" id="btnSelectFrom">
+            <span class="pill-text placeholder" id="fromBtnText">From</span>
+          </button>
+          <button type="button" class="date-pill selector-pill" id="btnSelectTo">
+            <span class="pill-text placeholder" id="toBtnText">To</span>
+          </button>
         </div>
       </section>
 
@@ -145,12 +136,9 @@
     <div class="picker-overlay" id="pickerOverlay" aria-hidden="true">
       <div class="picker-backdrop" id="pickerBackdrop"></div>
       <div class="picker-container">
-        <h3 class="picker-title" id="pickerTitle">Select Option</h3>
-        <p class="picker-subtitle">Tap an option to select</p>
         <div class="picker-list" id="pickerList">
           <!-- Centered vertical list of options -->
         </div>
-        <button type="button" class="picker-cancel-btn" id="pickerCancelBtn">Cancel</button>
       </div>
     </div>
 

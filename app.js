@@ -170,25 +170,23 @@
     activePickerField = field;
     elements.pickerList.innerHTML = "";
 
-    let title = "Select Option";
     let items = [];
     let currentValue = "";
 
     if (field === "category") {
-      title = "Select Category";
       items = state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category;
       currentValue = state.selectedCategory;
     } else if (field === "from") {
-      title = "Select Account (From)";
       items = state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from;
       currentValue = state.selectedFrom;
     } else if (field === "to") {
-      title = "Select Payee / Destination (To)";
       items = state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to;
       currentValue = state.selectedTo;
     }
 
-    elements.pickerTitle.textContent = title;
+    if (elements.pickerTitle) {
+      elements.pickerTitle.textContent = "";
+    }
 
     if (!items || items.length === 0) {
       const emptyDiv = document.createElement("div");
@@ -521,6 +519,14 @@
   }
   if (elements.pickerBackdrop) {
     elements.pickerBackdrop.addEventListener("click", closePicker);
+  }
+  if (elements.pickerOverlay) {
+    elements.pickerOverlay.addEventListener("click", (e) => {
+      // Tap outside the text options closes the picker
+      if (!e.target.closest(".picker-option")) {
+        closePicker();
+      }
+    });
   }
   if (elements.pickerCancelBtn) {
     elements.pickerCancelBtn.addEventListener("click", closePicker);
