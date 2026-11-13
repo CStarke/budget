@@ -66,7 +66,6 @@
     scriptUrlInput: document.getElementById("scriptUrlInput"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
     btnSyncNow: document.getElementById("btnSyncNow"),
-    btnUpdateApp: document.getElementById("btnUpdateApp"),
     queueBadge: document.getElementById("queueBadge"),
     queueCount: document.getElementById("queueCount"),
     queueStatusText: document.getElementById("queueStatusText"),
@@ -1137,27 +1136,6 @@
     elements.pickerCancelBtn.addEventListener("click", closePicker);
   }
 
-  // Force App Update & Clear Cache
-  async function forceAppUpdate() {
-    haptic(20);
-    showToast("Updating app...", "success");
-    if ("caches" in window) {
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch (e) {}
-    }
-    if ("serviceWorker" in navigator) {
-      try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((r) => r.unregister()));
-      } catch (e) {}
-    }
-    setTimeout(() => {
-      window.location.reload(true);
-    }, 350);
-  }
-
   elements.btnOpenSettings.addEventListener("click", () => {
     updateQueueUI();
     openSettings();
@@ -1170,9 +1148,6 @@
   }
   if (elements.queueBadge) {
     elements.queueBadge.addEventListener("click", () => processOfflineQueue(true));
-  }
-  if (elements.btnUpdateApp) {
-    elements.btnUpdateApp.addEventListener("click", forceAppUpdate);
   }
 
   // Network and background sync triggers
