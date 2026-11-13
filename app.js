@@ -730,6 +730,9 @@
             action: "undo",
             date: item.date,
             description: item.description,
+            category: item.category,
+            from: item.from,
+            to: item.to,
             amount: item.amount
           })
         });
