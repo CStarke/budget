@@ -176,13 +176,12 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
   width: 100%;
 }
 
 .currency-symbol {
   position: absolute;
-  left: 18px;
+  left: 20px;
   font-size: 34px;
   font-weight: 700;
   color: var(--accent-emerald);
@@ -193,13 +192,16 @@ body {
 .amount-input {
   background: transparent;
   border: none;
-  font-size: 46px;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 42px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #ffffff;
   width: 100%;
-  text-align: center;
-  padding: 0 54px;
+  text-align: right;
+  padding-left: 54px;
+  padding-right: 20px;
+  caret-color: var(--accent-emerald);
   outline: none;
   letter-spacing: -0.5px;
   line-height: 1.1;

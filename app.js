@@ -227,7 +227,16 @@
   // Cent-shifting state (ATM-style currency entry)
   let currentCents = 0;
 
-  // Handle ATM-style cent-shifting input (e.g. 4 -> 0.04, 50 -> 0.50, 5000 -> 50.00, 12856 -> 128.56)
+  // Format integer cents with thousand-separator commas (e.g. 128567 -> "1,285.67")
+  function formatCentsWithCommas(cents) {
+    if (cents === 0) return "";
+    const dollars = Math.floor(cents / 100);
+    const centPart = String(cents % 100).padStart(2, "0");
+    const formattedDollars = dollars.toLocaleString("en-US");
+    return `${formattedDollars}.${centPart}`;
+  }
+
+  // Handle ATM-style cent-shifting input (e.g. 4 -> 0.04, 50 -> 0.50, 12856 -> 128.56, 128567 -> 1,285.67)
   function handleAmountInput() {
     const rawDigits = elements.amountInput.value.replace(/\D/g, "");
     let cents = parseInt(rawDigits, 10);
@@ -239,11 +248,7 @@
     }
 
     currentCents = cents;
-    if (cents === 0) {
-      elements.amountInput.value = "";
-    } else {
-      elements.amountInput.value = (cents / 100).toFixed(2);
-    }
+    elements.amountInput.value = formatCentsWithCommas(cents);
 
     // Keep cursor at the end so typing continues naturally from right to left
     requestAnimationFrame(() => {

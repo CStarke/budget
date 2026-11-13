@@ -3,7 +3,7 @@
  * Provides instant offline loading and caching for app assets.
  */
 
-const CACHE_NAME = "budget-app-v2";
+const CACHE_NAME = "budget-app-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
