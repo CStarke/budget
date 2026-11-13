@@ -32,6 +32,9 @@
           <div class="brand-status" id="brandStatus">
             <span class="status-dot" id="statusDot"></span>
             <span id="statusText">Checking connection...</span>
+            <button type="button" class="queue-badge" id="queueBadge" style="display: none;" title="Tap to sync pending transactions">
+              <span id="queueCount">0</span> pending
+            </button>
           </div>
         </div>
       </div>
@@ -170,6 +173,19 @@
           <p class="settings-tip">
             In your Google Sheet, go to <b>Extensions &gt; Apps Script</b>, paste the script code, click <b>Deploy &gt; New deployment &gt; Web app</b>, and paste the URL.
           </p>
+        </div>
+
+        <div class="settings-field" id="queueSettingsSection">
+          <label class="settings-label">Offline Queue</label>
+          <div class="queue-status-text" id="queueStatusText">No pending transactions.</div>
+          <button type="button" class="btn-sync-now" id="btnSyncQueueNow" style="margin-top: 8px; display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            Sync Pending Transactions Now
+          </button>
         </div>
 
         <button type="button" class="btn-save-settings" id="btnSaveSettings">Save &amp; Connect</button>

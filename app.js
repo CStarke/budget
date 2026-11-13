@@ -54,7 +54,11 @@
     scriptUrlInput: document.getElementById("scriptUrlInput"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
     btnSyncNow: document.getElementById("btnSyncNow"),
-    btnUpdateApp: document.getElementById("btnUpdateApp")
+    btnUpdateApp: document.getElementById("btnUpdateApp"),
+    queueBadge: document.getElementById("queueBadge"),
+    queueCount: document.getElementById("queueCount"),
+    queueStatusText: document.getElementById("queueStatusText"),
+    btnSyncQueueNow: document.getElementById("btnSyncQueueNow")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -319,6 +323,134 @@
     });
   }
 
+  // Offline Queue Storage Key & Manager
+  const OFFLINE_QUEUE_KEY = "budget_offline_queue";
+
+  function getOfflineQueue() {
+    try {
+      return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveOfflineQueue(queue) {
+    try {
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    } catch (e) {
+      console.error("Failed to save offline queue:", e);
+    }
+  }
+
+  function enqueueTransaction(payload) {
+    const queue = getOfflineQueue();
+    const item = {
+      id: "tx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
+      queuedAt: Date.now(),
+      ...payload
+    };
+    queue.push(item);
+    saveOfflineQueue(queue);
+    updateQueueUI();
+    return queue.length;
+  }
+
+  function updateQueueUI() {
+    const queue = getOfflineQueue();
+    const count = queue.length;
+
+    if (elements.queueBadge) {
+      if (count > 0) {
+        elements.queueBadge.style.display = "inline-flex";
+        if (elements.queueCount) elements.queueCount.textContent = count;
+      } else {
+        elements.queueBadge.style.display = "none";
+      }
+    }
+
+    if (elements.queueStatusText) {
+      if (count === 0) {
+        elements.queueStatusText.textContent = "No pending transactions.";
+      } else {
+        elements.queueStatusText.textContent = `${count} transaction${count === 1 ? "" : "s"} waiting to sync.`;
+      }
+    }
+
+    if (elements.btnSyncQueueNow) {
+      elements.btnSyncQueueNow.style.display = count > 0 ? "inline-flex" : "none";
+    }
+  }
+
+  let isSyncingQueue = false;
+  async function processOfflineQueue(showNotification = false) {
+    if (isSyncingQueue) return;
+    if (!state.scriptUrl) return;
+
+    const queue = getOfflineQueue();
+    if (!queue || queue.length === 0) {
+      updateQueueUI();
+      return;
+    }
+
+    if (!navigator.onLine) {
+      if (showNotification) {
+        showToast("Still offline. Will sync when connection returns.", "error");
+      }
+      return;
+    }
+
+    isSyncingQueue = true;
+    updateStatus("syncing", `Syncing queue (${queue.length})...`);
+
+    let syncedCount = 0;
+    while (queue.length > 0) {
+      const item = queue[0];
+      const payload = {
+        date: item.date,
+        description: item.description,
+        category: item.category,
+        from: item.from,
+        to: item.to,
+        amount: item.amount
+      };
+
+      try {
+        await fetch(state.scriptUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // Sent successfully, remove from queue
+        queue.shift();
+        saveOfflineQueue(queue);
+        syncedCount++;
+        updateQueueUI();
+      } catch (err) {
+        console.warn("Queue sync paused:", err);
+        break;
+      }
+    }
+
+    isSyncingQueue = false;
+    updateQueueUI();
+
+    const remaining = queue.length;
+    if (syncedCount > 0) {
+      haptic([25, 50, 25]);
+      showToast(`Synced ${syncedCount} offline transaction${syncedCount === 1 ? "" : "s"} to ${state.sheetName || "Sheet"}!`, "success");
+    }
+
+    if (remaining === 0) {
+      updateStatus("online", `Connected: ${state.sheetName || "Sheet"}`);
+    } else {
+      updateStatus("", `${remaining} pending sync`);
+    }
+  }
+
   // Submit Transaction
   async function submitTransaction() {
     const amount = currentCents / 100;
@@ -385,18 +517,8 @@
       amount: amount
     };
 
-    // UI Busy State
-    elements.btnSubmit.disabled = true;
-    elements.btnSubmitText.textContent = "Adding to " + (state.sheetName || "Sheet") + "...";
-    haptic(15);
-
-    // Helper to perform successful form reset and toast
-    function onTransactionSuccess() {
-      haptic([25, 60, 25]);
-      const formattedAmount = "$" + amount.toFixed(2);
-      showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
-
-      // Reset form
+    // Helper to perform successful form reset
+    function resetFormFields() {
       currentCents = 0;
       elements.amountInput.value = "";
       elements.descInput.value = "";
@@ -404,15 +526,25 @@
       state.selectedFrom = "";
       state.selectedTo = "";
       updateAllButtons();
-      setDate(getFormattedDate(new Date())); // reset to today
+      setDate(getFormattedDate(new Date()));
       elements.amountInput.focus();
     }
 
+    // Offline check: queue immediately if offline
+    if (!navigator.onLine) {
+      const pendingCount = enqueueTransaction(payload);
+      haptic([20, 50, 20]);
+      showToast(`Saved offline (${pendingCount} pending). Will sync when online.`, "success");
+      resetFormFields();
+      return;
+    }
+
+    // UI Busy State
+    elements.btnSubmit.disabled = true;
+    elements.btnSubmitText.textContent = "Adding to " + (state.sheetName || "Sheet") + "...";
+    haptic(15);
+
     try {
-      // POST to Google Apps Script using mode: "no-cors"
-      // Google Apps Script redirects cross-origin (script.google.com -> googleusercontent.com),
-      // which causes Firefox and privacy-focused browsers to throw a NetworkError in CORS mode
-      // even after the script successfully appends the row. "no-cors" prevents CORS redirect failure.
       await fetch(state.scriptUrl, {
         method: "POST",
         mode: "no-cors",
@@ -422,16 +554,22 @@
         body: JSON.stringify(payload)
       });
 
-      onTransactionSuccess();
-    } catch (err) {
-      console.warn("Submission fetch error:", err);
-      // If the browser threw a network redirect error even though online, the POST was already delivered
-      if (navigator.onLine && err && err.message && (err.message.includes("NetworkError") || err.message.includes("Failed to fetch"))) {
-        onTransactionSuccess();
-      } else {
-        haptic([50, 100, 50]);
-        showToast("Failed to save: " + (err.message || "Network error"), "error");
+      // Success
+      haptic([25, 60, 25]);
+      const formattedAmount = "$" + amount.toFixed(2);
+      showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
+      resetFormFields();
+
+      // Trigger queue process in case older items exist
+      if (getOfflineQueue().length > 0) {
+        processOfflineQueue();
       }
+    } catch (err) {
+      console.warn("Submission error, saving to offline queue:", err);
+      const pendingCount = enqueueTransaction(payload);
+      haptic([20, 50, 20]);
+      showToast(`Saved offline (${pendingCount} pending). Will sync automatically.`, "success");
+      resetFormFields();
     } finally {
       elements.btnSubmit.disabled = false;
       elements.btnSubmitText.textContent = "Add Transaction";
@@ -559,13 +697,42 @@
     }, 350);
   }
 
-  elements.btnOpenSettings.addEventListener("click", openSettings);
+  elements.btnOpenSettings.addEventListener("click", () => {
+    updateQueueUI();
+    openSettings();
+  });
   elements.btnCloseSettings.addEventListener("click", closeSettings);
   elements.btnSaveSettings.addEventListener("click", saveSettings);
   elements.btnSyncNow.addEventListener("click", () => syncOptions(true));
+  if (elements.btnSyncQueueNow) {
+    elements.btnSyncQueueNow.addEventListener("click", () => processOfflineQueue(true));
+  }
+  if (elements.queueBadge) {
+    elements.queueBadge.addEventListener("click", () => processOfflineQueue(true));
+  }
   if (elements.btnUpdateApp) {
     elements.btnUpdateApp.addEventListener("click", forceAppUpdate);
   }
+
+  // Network and background sync triggers
+  window.addEventListener("online", () => {
+    updateStatus("online", state.sheetName ? `Connected: ${state.sheetName}` : "Online");
+    processOfflineQueue();
+  });
+  window.addEventListener("offline", () => {
+    const queue = getOfflineQueue();
+    updateStatus("", queue.length > 0 ? `Offline (${queue.length} pending)` : "Offline");
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && navigator.onLine) {
+      processOfflineQueue();
+    }
+  });
+  window.addEventListener("focus", () => {
+    if (navigator.onLine) {
+      processOfflineQueue();
+    }
+  });
 
   elements.settingsModal.addEventListener("click", (e) => {
     if (e.target === elements.settingsModal) {
@@ -587,9 +754,13 @@
   // Init
   setDate(getFormattedDate(new Date()));
   updateAllButtons();
+  updateQueueUI();
 
   if (state.scriptUrl) {
     syncOptions(false);
+    if (navigator.onLine) {
+      processOfflineQueue();
+    }
   } else {
     updateStatus("", "Tap ⚙ to connect sheet");
   }
