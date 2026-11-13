@@ -118,7 +118,7 @@
     return String(dateStr);
   }
 
-  // Haptic feedback helper (hybrid Android navigator.vibrate + iOS switch Taptic Engine)
+  // Haptic feedback helper (subtle, light tactile ticks)
   let iosHapticSwitch = null;
   function triggerIOSHaptic() {
     try {
@@ -142,7 +142,7 @@
     }
   }
 
-  function haptic(pattern = 35) {
+  function haptic(pattern = 12) {
     // 1. Android / standard Vibration API
     if ("vibrate" in navigator && typeof navigator.vibrate === "function") {
       try {
@@ -310,7 +310,7 @@
         btn.textContent = item;
         btn.addEventListener("click", () => {
           if (isIncomeSpendingDisallowed) {
-            haptic(35);
+            haptic(12);
             if (isDefault) {
               if (field === "from") {
                 state.defaults.from = item;
@@ -346,7 +346,7 @@
             return;
           }
 
-          haptic(35);
+          haptic(12);
           if (isDefault) {
             if (item === "(None)") {
               state.defaults[field] = "";
@@ -424,7 +424,6 @@
     }
 
     elements.pickerOverlay.classList.add("open");
-    haptic(30);
   }
 
   function closePicker() {
@@ -828,7 +827,7 @@
   }
 
   async function undoTransaction(item) {
-    haptic([40, 50, 40]);
+    haptic(15);
 
     // 1. Remove from recent list
     removeRecentTransaction(item.id);
@@ -894,7 +893,7 @@
 
     // Strict validation: Amount required
     if (currentCents <= 0 || isNaN(amount)) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       const card = elements.amountCard || elements.amountInput.closest(".amount-card");
       highlightError(card);
       elements.amountInput.focus();
@@ -904,7 +903,7 @@
     // Strict validation: Description required
     const desc = elements.descInput.value.trim();
     if (!desc) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.descInput);
       elements.descInput.focus();
       return;
@@ -912,7 +911,7 @@
 
     // Strict validation: Category required
     if (!state.selectedCategory) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.btnSelectCategory);
       openPicker("category");
       return;
@@ -920,7 +919,7 @@
 
     // Strict validation: From required
     if (!state.selectedFrom) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.btnSelectFrom);
       openPicker("from");
       return;
@@ -928,7 +927,7 @@
 
     // Strict validation: To required
     if (!state.selectedTo) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.btnSelectTo);
       openPicker("to");
       return;
@@ -936,7 +935,7 @@
 
     // Strict validation: From and To cannot be the same
     if (state.selectedFrom.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.btnSelectFrom);
       highlightError(elements.btnSelectTo);
       return;
@@ -944,14 +943,14 @@
 
     // Strict validation: From cannot be Income and To cannot be Spending at the same time
     if (state.selectedFrom.trim().toLowerCase() === "income" && state.selectedTo.trim().toLowerCase() === "spending") {
-      haptic([50, 50, 50]);
+      haptic([20, 30, 20]);
       highlightError(elements.btnSelectFrom);
       highlightError(elements.btnSelectTo);
       return;
     }
 
     if (!state.scriptUrl) {
-      haptic(50);
+      haptic(25);
       showToast("Please connect your Google Sheet in Settings first.", "error");
       openSettings();
       return;
@@ -983,7 +982,7 @@
     if (!navigator.onLine) {
       const pendingCount = enqueueTransaction(payload);
       addRecentTransaction(payload);
-      haptic([35, 50, 35]);
+      haptic(15);
       showToast(`Saved offline (${pendingCount} pending). Will sync when online.`, "success");
       resetFormFields();
       return;
@@ -992,7 +991,6 @@
     // UI Busy State
     elements.btnSubmit.disabled = true;
     elements.btnSubmitText.textContent = "Adding to " + (state.sheetName || "Sheet") + "...";
-    haptic(35);
 
     try {
       await fetch(state.scriptUrl, {
@@ -1005,7 +1003,7 @@
       });
 
       // Success
-      haptic([40, 50, 40]);
+      haptic(15);
       const formattedAmount = "$" + amount.toFixed(2);
       showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
       addRecentTransaction(payload);
@@ -1019,7 +1017,7 @@
       console.warn("Submission error, saving to offline queue:", err);
       const pendingCount = enqueueTransaction(payload);
       addRecentTransaction(payload);
-      haptic([35, 50, 35]);
+      haptic(15);
       showToast(`Saved offline (${pendingCount} pending). Will sync automatically.`, "success");
       resetFormFields();
     } finally {
@@ -1051,19 +1049,16 @@
 
   // Event Listeners
   elements.btnDateToday.addEventListener("click", () => {
-    haptic(35);
     setDate(getFormattedDate(new Date()));
   });
 
   elements.btnDateYesterday.addEventListener("click", () => {
-    haptic(35);
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     setDate(getFormattedDate(yesterday));
   });
 
   elements.btnDateCustom.addEventListener("click", () => {
-    haptic(35);
     if (elements.datePicker.showPicker) {
       elements.datePicker.showPicker();
     } else {
