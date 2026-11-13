@@ -5,14 +5,15 @@
  * - When offline: Falls back to cached assets seamlessly.
  */
 
-const CACHE_NAME = "budget-app-v31";
+const CACHE_NAME = "budget-app-v32";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
   "./manifest.json",
-  "./icons/icon.svg"
+  "./icons/icon.svg",
+  "./icons/brand-logo.svg"
 ];
 
 // Install: Cache core application assets
