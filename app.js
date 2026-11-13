@@ -201,11 +201,24 @@
       elements.pickerList.appendChild(emptyDiv);
     } else {
       items.forEach((item) => {
+        const isConflicting = (field === "from" && state.selectedTo && item.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) ||
+                              (field === "to" && state.selectedFrom && item.trim().toLowerCase() === state.selectedFrom.trim().toLowerCase());
+
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = `picker-option ${item === currentValue ? "active" : ""}`;
+        if (isConflicting) {
+          btn.style.opacity = "0.35";
+        }
         btn.textContent = item;
         btn.addEventListener("click", () => {
+          if (isConflicting) {
+            haptic([30, 60, 30]);
+            const otherField = field === "from" ? "To" : "From";
+            showToast(`"${item}" is already selected for ${otherField}.`, "error");
+            return;
+          }
+
           haptic(12);
           if (field === "category") {
             state.selectedCategory = item;
@@ -498,6 +511,15 @@
       showToast("To destination is required.", "error");
       highlightError(elements.btnSelectTo);
       openPicker("to");
+      return;
+    }
+
+    // Strict validation: From and To cannot be the same
+    if (state.selectedFrom.trim().toLowerCase() === state.selectedTo.trim().toLowerCase()) {
+      haptic([30, 60, 30]);
+      showToast('"From" and "To" cannot be the same.', "error");
+      highlightError(elements.btnSelectFrom);
+      highlightError(elements.btnSelectTo);
       return;
     }
 
