@@ -242,19 +242,36 @@
         }
         btn.textContent = item;
         btn.addEventListener("click", () => {
-          if (isConflicting) {
-            haptic([30, 60, 30]);
-            const otherField = field === "from" ? "To" : "From";
-            showToast(`"${item}" is already selected for ${isDefault ? "default " : ""}${otherField}.`, "error");
-            return;
-          }
-
-          haptic(12);
+          haptic(15);
           if (isDefault) {
             if (item === "(None)") {
               state.defaults[field] = "";
               localStorage.removeItem(`budget_default_${field}`);
               showToast(`Default for ${field} cleared.`, "success");
+            } else if (isConflicting) {
+              // Swap default From and To
+              if (field === "from") {
+                const prevFrom = state.defaults.from;
+                state.defaults.from = item;
+                state.defaults.to = prevFrom;
+                localStorage.setItem("budget_default_from", item);
+                if (prevFrom) {
+                  localStorage.setItem("budget_default_to", prevFrom);
+                } else {
+                  localStorage.removeItem("budget_default_to");
+                }
+              } else if (field === "to") {
+                const prevTo = state.defaults.to;
+                state.defaults.to = item;
+                state.defaults.from = prevTo;
+                localStorage.setItem("budget_default_to", item);
+                if (prevTo) {
+                  localStorage.setItem("budget_default_from", prevTo);
+                } else {
+                  localStorage.removeItem("budget_default_from");
+                }
+              }
+              showToast("Swapped default From and To.", "success");
             } else {
               state.defaults[field] = item;
               localStorage.setItem(`budget_default_${field}`, item);
@@ -272,13 +289,29 @@
             return;
           }
 
-          if (field === "category") {
-            state.selectedCategory = item;
-          } else if (field === "from") {
-            state.selectedFrom = item;
-          } else if (field === "to") {
-            state.selectedTo = item;
+          // Main Homescreen Selection
+          if (isConflicting) {
+            // Swap From and To entries
+            if (field === "from") {
+              const prevFrom = state.selectedFrom;
+              state.selectedFrom = item;
+              state.selectedTo = prevFrom;
+            } else if (field === "to") {
+              const prevTo = state.selectedTo;
+              state.selectedTo = item;
+              state.selectedFrom = prevTo;
+            }
+            showToast("Swapped From and To.", "success");
+          } else {
+            if (field === "category") {
+              state.selectedCategory = item;
+            } else if (field === "from") {
+              state.selectedFrom = item;
+            } else if (field === "to") {
+              state.selectedTo = item;
+            }
           }
+
           updateAllButtons();
           closePicker();
         });
