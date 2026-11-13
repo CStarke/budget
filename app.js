@@ -118,15 +118,41 @@
     return String(dateStr);
   }
 
-  // Haptic feedback helper (calibrated for modern mobile motors: 30-40ms threshold)
+  // Haptic feedback helper (hybrid Android navigator.vibrate + iOS switch Taptic Engine)
+  let iosHapticSwitch = null;
+  function triggerIOSHaptic() {
+    try {
+      if (!iosHapticSwitch && document.body) {
+        iosHapticSwitch = document.createElement("input");
+        iosHapticSwitch.type = "checkbox";
+        iosHapticSwitch.setAttribute("switch", "");
+        iosHapticSwitch.id = "ios-haptic-trigger";
+        iosHapticSwitch.style.position = "fixed";
+        iosHapticSwitch.style.top = "-9999px";
+        iosHapticSwitch.style.left = "-9999px";
+        iosHapticSwitch.style.opacity = "0";
+        iosHapticSwitch.style.pointerEvents = "none";
+        document.body.appendChild(iosHapticSwitch);
+      }
+      if (iosHapticSwitch) {
+        iosHapticSwitch.click();
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
   function haptic(pattern = 35) {
-    if ("vibrate" in navigator && navigator.vibrate) {
+    // 1. Android / standard Vibration API
+    if ("vibrate" in navigator && typeof navigator.vibrate === "function") {
       try {
         navigator.vibrate(pattern);
       } catch (e) {
-        // Ignore vibration errors
+        // Ignore
       }
     }
+    // 2. iOS Taptic Engine workaround (iOS 18+ switch control)
+    triggerIOSHaptic();
   }
 
   // Toast notification
