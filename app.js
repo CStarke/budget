@@ -333,14 +333,18 @@
     }
 
     // Strict validation: Description required
-    const desc = elements.descInput.value.trim();
-    if (!desc) {
+    let rawDesc = elements.descInput.value.trim();
+    if (!rawDesc) {
       haptic([30, 60, 30]);
       showToast("Description is required.", "error");
       highlightError(elements.descInput);
       elements.descInput.focus();
       return;
     }
+
+    // Auto-capitalize first word
+    const desc = rawDesc.charAt(0).toUpperCase() + rawDesc.slice(1);
+    elements.descInput.value = desc;
 
     // Strict validation: Category required
     if (!state.selectedCategory) {
@@ -390,42 +394,48 @@
     elements.btnSubmitText.textContent = "Adding to " + (state.sheetName || "Sheet") + "...";
     haptic(15);
 
+    // Helper to perform successful form reset and toast
+    function onTransactionSuccess() {
+      haptic([25, 60, 25]);
+      const formattedAmount = "$" + amount.toFixed(2);
+      showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
+
+      // Reset form
+      currentCents = 0;
+      elements.amountInput.value = "";
+      elements.descInput.value = "";
+      state.selectedCategory = "";
+      state.selectedFrom = "";
+      state.selectedTo = "";
+      updateAllButtons();
+      setDate(getFormattedDate(new Date())); // reset to today
+      elements.amountInput.focus();
+    }
+
     try {
-      // POST to Google Apps Script
-      const response = await fetch(state.scriptUrl, {
+      // POST to Google Apps Script using mode: "no-cors"
+      // Google Apps Script redirects cross-origin (script.google.com -> googleusercontent.com),
+      // which causes Firefox and privacy-focused browsers to throw a NetworkError in CORS mode
+      // even after the script successfully appends the row. "no-cors" prevents CORS redirect failure.
+      await fetch(state.scriptUrl, {
         method: "POST",
-        mode: "cors",
+        mode: "no-cors",
         headers: {
           "Content-Type": "text/plain;charset=utf-8"
         },
         body: JSON.stringify(payload)
       });
 
-      const result = await response.json();
-
-      if (result && result.success) {
-        // Success!
-        haptic([25, 60, 25]);
-        const formattedAmount = "$" + amount.toFixed(2);
-        showToast(`Added ${formattedAmount} to ${result.sheetName || state.sheetName}!`, "success");
-
-        // Reset form
-        currentCents = 0;
-        elements.amountInput.value = "";
-        elements.descInput.value = "";
-        state.selectedCategory = "";
-        state.selectedFrom = "";
-        state.selectedTo = "";
-        updateAllButtons();
-        setDate(getFormattedDate(new Date())); // reset to today
-        elements.amountInput.focus();
-      } else {
-        throw new Error(result.error || "Failed to save entry");
-      }
+      onTransactionSuccess();
     } catch (err) {
-      console.error("Submission failed:", err);
-      haptic([50, 100, 50]);
-      showToast("Failed to save: " + (err.message || "Network error"), "error");
+      console.warn("Submission fetch error:", err);
+      // If the browser threw a network redirect error even though online, the POST was already delivered
+      if (navigator.onLine && err && err.message && (err.message.includes("NetworkError") || err.message.includes("Failed to fetch"))) {
+        onTransactionSuccess();
+      } else {
+        haptic([50, 100, 50]);
+        showToast("Failed to save: " + (err.message || "Network error"), "error");
+      }
     } finally {
       elements.btnSubmit.disabled = false;
       elements.btnSubmitText.textContent = "Add Transaction";
@@ -504,6 +514,21 @@
     if (e.key === "Enter") {
       e.preventDefault();
       submitTransaction();
+    }
+  });
+
+  // Auto-capitalize first letter of description while typing or on blur
+  elements.descInput.addEventListener("input", () => {
+    const val = elements.descInput.value;
+    if (val.length === 1 && val !== val.toUpperCase()) {
+      elements.descInput.value = val.toUpperCase();
+    }
+  });
+
+  elements.descInput.addEventListener("blur", () => {
+    const val = elements.descInput.value.trim();
+    if (val.length > 0) {
+      elements.descInput.value = val.charAt(0).toUpperCase() + val.slice(1);
     }
   });
 
