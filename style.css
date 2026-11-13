@@ -307,72 +307,100 @@ body {
   margin-left: 2px;
 }
 
-/* Selector Buttons (Shaped like Date Selector Pills) */
-.selector-btn {
-  width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 600;
+/* Horizontal 3-Column Category Grid */
+.category-grid {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  gap: 8px;
+  width: 100%;
 }
 
-.selector-btn:active {
-  transform: scale(0.98);
+.category-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.category-col .section-label {
+  font-size: 11px;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.selector-pill {
+  width: 100%;
+  padding: 10px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selector-pill.has-value {
+  border-color: rgba(16, 185, 129, 0.45);
   background: var(--bg-card-hover);
 }
 
-.selector-btn.has-value {
-  border-color: rgba(16, 185, 129, 0.4);
+.pill-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
 }
 
-.selector-text.placeholder {
+.pill-text.placeholder {
   color: var(--text-muted);
   font-weight: 500;
 }
 
-.selector-text.selected {
+.pill-text.selected {
   color: #ffffff;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.selector-chevron {
-  color: var(--text-muted);
-  transition: transform 0.2s;
-}
-
-/* Centered Dark-to-Transparent Radial Overlay */
+/* Centered Dark-to-Transparent Radial Overlay (Mobile Fixed) */
 .picker-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 300;
+  z-index: 999;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
 }
 
 .picker-overlay.open {
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
 }
 
 .picker-backdrop {
   position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.88) 45%, rgba(9, 13, 22, 0.5) 85%, transparent 100%);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.88) 45%, rgba(9, 13, 22, 0.6) 85%, transparent 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .picker-container {

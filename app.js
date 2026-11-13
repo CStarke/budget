@@ -143,14 +143,17 @@
 
   // Update Selector Button Display
   function updateButtonDisplay(textElem, buttonElem, value) {
+    if (!textElem || !buttonElem) return;
     if (value && String(value).trim().length > 0) {
       textElem.textContent = value;
-      textElem.className = "selector-text selected";
+      textElem.className = "pill-text selected";
       buttonElem.classList.add("has-value");
+      buttonElem.classList.add("active");
     } else {
       textElem.textContent = "Select one";
-      textElem.className = "selector-text placeholder";
+      textElem.className = "pill-text placeholder";
       buttonElem.classList.remove("has-value");
+      buttonElem.classList.remove("active");
     }
   }
 
