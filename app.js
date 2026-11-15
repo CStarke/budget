@@ -91,6 +91,7 @@
     qfEditorTitle: document.getElementById("qfEditorTitle"),
     btnCloseQuickFillEditor: document.getElementById("btnCloseQuickFillEditor"),
     qfTitleInput: document.getElementById("qfTitleInput"),
+    qfAmountInput: document.getElementById("qfAmountInput"),
     btnQfCategory: document.getElementById("btnQfCategory"),
     qfCatBtnText: document.getElementById("qfCatBtnText"),
     btnQfFrom: document.getElementById("btnQfFrom"),
@@ -1376,7 +1377,8 @@
       const slot = document.createElement("div");
       slot.className = "wheel-slot";
 
-      const title = i === 0 ? "" : options[i - 1].title;
+      const opt = i === 0 ? null : options[i - 1];
+      const title = opt ? (opt.title + (opt.amount && opt.amount > 0 ? ` · $${opt.amount.toFixed(2)}` : "")) : "";
       slot.textContent = title;
 
       // 3D rotation and cylinder translation
@@ -1435,6 +1437,12 @@
     if (index > 0 && index <= options.length) {
       const selected = options[index - 1];
       activeQuickFill = selected;
+
+      // Autofill Dollar Amount (if preset defines an optional amount)
+      if (selected.amount && typeof selected.amount === "number" && selected.amount > 0) {
+        currentCents = Math.round(selected.amount * 100);
+        elements.amountInput.value = formatCentsWithCommas(currentCents);
+      }
 
       // Autofill Category, From, To
       if (selected.category) state.selectedCategory = selected.category;
@@ -1631,10 +1639,11 @@
 
       const badges = document.createElement("div");
       badges.className = "qf-item-badges";
+      const amtBadge = opt.amount && opt.amount > 0 ? `$${opt.amount.toFixed(2)} • ` : "";
       const catText = opt.category || "No Category";
       const fromText = opt.from || "Any";
       const toText = opt.to || "Any";
-      badges.textContent = `${catText} • ${fromText} → ${toText}`;
+      badges.textContent = `${amtBadge}${catText} • ${fromText} → ${toText}`;
 
       info.appendChild(title);
       info.appendChild(badges);
@@ -1754,6 +1763,7 @@
   let qfEditorState = {
     id: null,
     title: "",
+    amount: null,
     category: "",
     from: "",
     to: ""
@@ -1768,6 +1778,7 @@
       qfEditorState = {
         id: null,
         title: "",
+        amount: null,
         category: "",
         from: "",
         to: ""
@@ -1777,6 +1788,7 @@
     }
 
     elements.qfTitleInput.value = qfEditorState.title;
+    elements.qfAmountInput.value = (qfEditorState.amount && qfEditorState.amount > 0) ? qfEditorState.amount.toFixed(2) : "";
     elements.qfCatBtnText.textContent = qfEditorState.category || "(None)";
     elements.qfFromBtnText.textContent = qfEditorState.from || "(None)";
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
@@ -1798,6 +1810,16 @@
       return;
     }
 
+    // Parse optional dollar amount
+    let amount = null;
+    if (elements.qfAmountInput && elements.qfAmountInput.value.trim()) {
+      const cleanAmt = elements.qfAmountInput.value.replace(/[^0-9.]/g, "");
+      const parsedAmt = parseFloat(cleanAmt);
+      if (!isNaN(parsedAmt) && parsedAmt > 0) {
+        amount = Math.round(parsedAmt * 100) / 100;
+      }
+    }
+
     const options = getQuickFillOptions();
     if (qfEditorState.id) {
       // Update existing
@@ -1806,6 +1828,7 @@
         options[idx] = {
           ...options[idx],
           title,
+          amount,
           category: qfEditorState.category,
           from: qfEditorState.from,
           to: qfEditorState.to
@@ -1816,6 +1839,7 @@
       options.push({
         id: "qf_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
         title,
+        amount,
         category: qfEditorState.category,
         from: qfEditorState.from,
         to: qfEditorState.to

@@ -325,6 +325,25 @@
         </div>
 
         <div class="settings-field">
+          <label class="settings-label" for="qfAmountInput">Dollar Amount <span style="color: var(--text-muted); font-weight: 400; font-size: 12px;">(Optional, e.g. for subscriptions)</span></label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 16px; color: var(--accent-emerald); font-weight: 700; font-size: 16px;">$</span>
+            <input 
+              type="text" 
+              id="qfAmountInput" 
+              class="settings-input" 
+              placeholder="0.00" 
+              inputmode="decimal"
+              style="padding-left: 32px;"
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+              data-form-type="other"
+            >
+          </div>
+        </div>
+
+        <div class="settings-field">
           <label class="settings-label" style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Autofill Values</label>
           <div class="category-grid">
             <div class="category-col">
