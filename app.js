@@ -1372,21 +1372,21 @@
 
     for (let i = 0; i < totalSlots; i++) {
       const diff = i - virtualIndex;
-      if (Math.abs(diff) > 2.6) continue; // Out of view
+      if (Math.abs(diff) > 2.8) continue; // Out of view
 
       const slot = document.createElement("div");
       slot.className = "wheel-slot";
 
       const opt = i === 0 ? null : options[i - 1];
-      const title = opt ? (opt.title + (opt.amount && opt.amount > 0 ? ` · $${opt.amount.toFixed(2)}` : "")) : "";
+      const title = opt ? opt.title : "";
       slot.textContent = title;
 
       // 3D rotation and cylinder translation with tight slot spacing for 72px container
-      const angle = diff * -26; // degrees rotation on X axis
-      const translateY = diff * 22; // px vertical offset
-      const translateZ = Math.max(0, 26 - Math.abs(diff) * 12);
-      const scale = Math.max(0.74, 1 - Math.abs(diff) * 0.12);
-      const opacity = Math.max(0, 1 - Math.abs(diff) * 0.42);
+      const angle = diff * -20; // degrees rotation on X axis
+      const translateY = diff * 18; // px vertical offset
+      const translateZ = Math.max(0, 24 - Math.abs(diff) * 10);
+      const scale = Math.max(0.76, 1 - Math.abs(diff) * 0.10);
+      const opacity = Math.max(0, 1 - Math.abs(diff) * 0.40);
 
       slot.style.transform = `rotateX(${angle}deg) translateY(${translateY}px) translateZ(${translateZ}px) scale(${scale})`;
       slot.style.opacity = String(opacity);
@@ -1817,6 +1817,22 @@
     from: "",
     to: ""
   };
+  let qfEditorCents = 0;
+
+  function handleQfAmountInput() {
+    const rawDigits = elements.qfAmountInput.value.replace(/\D/g, "");
+    let cents = parseInt(rawDigits, 10);
+    if (isNaN(cents)) cents = 0;
+    if (cents > 99999999) cents = 99999999;
+    qfEditorCents = cents;
+    elements.qfAmountInput.value = formatCentsWithCommas(cents);
+    requestAnimationFrame(() => {
+      elements.qfAmountInput.setSelectionRange(
+        elements.qfAmountInput.value.length,
+        elements.qfAmountInput.value.length
+      );
+    });
+  }
 
   function openQuickFillEditor(opt = null) {
     if (opt) {
@@ -1837,7 +1853,13 @@
     }
 
     elements.qfTitleInput.value = qfEditorState.title;
-    elements.qfAmountInput.value = (qfEditorState.amount && qfEditorState.amount > 0) ? qfEditorState.amount.toFixed(2) : "";
+    if (qfEditorState.amount && qfEditorState.amount > 0) {
+      qfEditorCents = Math.round(qfEditorState.amount * 100);
+      elements.qfAmountInput.value = formatCentsWithCommas(qfEditorCents);
+    } else {
+      qfEditorCents = 0;
+      elements.qfAmountInput.value = "";
+    }
     elements.qfCatBtnText.textContent = qfEditorState.category || "(None)";
     elements.qfFromBtnText.textContent = qfEditorState.from || "(None)";
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
@@ -1859,15 +1881,8 @@
       return;
     }
 
-    // Parse optional dollar amount
-    let amount = null;
-    if (elements.qfAmountInput && elements.qfAmountInput.value.trim()) {
-      const cleanAmt = elements.qfAmountInput.value.replace(/[^0-9.]/g, "");
-      const parsedAmt = parseFloat(cleanAmt);
-      if (!isNaN(parsedAmt) && parsedAmt > 0) {
-        amount = Math.round(parsedAmt * 100) / 100;
-      }
-    }
+    // Parse optional dollar amount (from ATM-style decimal-first entry)
+    const amount = qfEditorCents > 0 ? (qfEditorCents / 100) : null;
 
     const options = getQuickFillOptions();
     if (qfEditorState.id) {
@@ -1932,6 +1947,20 @@
 
   if (elements.btnSaveQuickFillOption) {
     elements.btnSaveQuickFillOption.addEventListener("click", saveQuickFillOption);
+  }
+
+  if (elements.qfAmountInput) {
+    elements.qfAmountInput.addEventListener("input", handleQfAmountInput);
+    elements.qfAmountInput.addEventListener("focus", () => {
+      if (qfEditorCents > 0) {
+        requestAnimationFrame(() => {
+          elements.qfAmountInput.setSelectionRange(
+            elements.qfAmountInput.value.length,
+            elements.qfAmountInput.value.length
+          );
+        });
+      }
+    });
   }
 
   if (elements.btnDeleteQuickFillOption) {
