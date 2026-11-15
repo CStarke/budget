@@ -1372,7 +1372,7 @@
 
     for (let i = 0; i < totalSlots; i++) {
       const diff = i - virtualIndex;
-      if (Math.abs(diff) > 2.2) continue; // Out of view
+      if (Math.abs(diff) > 2.6) continue; // Out of view
 
       const slot = document.createElement("div");
       slot.className = "wheel-slot";
@@ -1381,12 +1381,12 @@
       const title = opt ? (opt.title + (opt.amount && opt.amount > 0 ? ` · $${opt.amount.toFixed(2)}` : "")) : "";
       slot.textContent = title;
 
-      // 3D rotation and cylinder translation
-      const angle = diff * -42; // degrees rotation on X axis
-      const translateY = diff * 18; // px vertical offset
-      const translateZ = Math.max(0, 30 - Math.abs(diff) * 16);
-      const scale = Math.max(0.72, 1 - Math.abs(diff) * 0.15);
-      const opacity = Math.max(0, 1 - Math.abs(diff) * 0.65);
+      // 3D rotation and cylinder translation with tight slot spacing for 72px container
+      const angle = diff * -26; // degrees rotation on X axis
+      const translateY = diff * 22; // px vertical offset
+      const translateZ = Math.max(0, 26 - Math.abs(diff) * 12);
+      const scale = Math.max(0.74, 1 - Math.abs(diff) * 0.12);
+      const opacity = Math.max(0, 1 - Math.abs(diff) * 0.42);
 
       slot.style.transform = `rotateX(${angle}deg) translateY(${translateY}px) translateZ(${translateZ}px) scale(${scale})`;
       slot.style.opacity = String(opacity);
@@ -1479,8 +1479,22 @@
     if (!wrapper) return;
 
     let startY = 0;
-    let startTime = 0;
-    let lastY = 0;
+    let recentMoves = [];
+
+    // Explicit non-passive touchmove listener to completely prevent mobile pull-to-refresh
+    wrapper.addEventListener("touchmove", (e) => {
+      if (isDraggingWheel) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    // Stop touchstart propagation so page-level gesture detectors don't latch pull-down
+    wrapper.addEventListener("touchstart", (e) => {
+      if (e.target.closest("#btnWheelReset")) return;
+      const options = getQuickFillOptions();
+      if (options.length === 0) return;
+      e.stopPropagation();
+    }, { passive: true });
 
     wrapper.addEventListener("pointerdown", (e) => {
       // If clicking reset button, ignore wheel drag
@@ -1491,34 +1505,43 @@
 
       isDraggingWheel = true;
       startY = e.clientY;
-      lastY = e.clientY;
-      startTime = Date.now();
       dragStartVirtual = currentVirtualIndex;
       lastHapticIndex = Math.round(currentVirtualIndex);
+      recentMoves = [{ y: e.clientY, time: performance.now() }];
 
-      wrapper.setPointerCapture(e.pointerId);
+      try {
+        wrapper.setPointerCapture(e.pointerId);
+      } catch (err) {}
+
       if (wheelAnimFrame) cancelAnimationFrame(wheelAnimFrame);
+      e.preventDefault();
     });
 
     wrapper.addEventListener("pointermove", (e) => {
       if (!isDraggingWheel) return;
 
+      const now = performance.now();
+      recentMoves.push({ y: e.clientY, time: now });
+      while (recentMoves.length > 1 && now - recentMoves[0].time > 90) {
+        recentMoves.shift();
+      }
+
       const options = getQuickFillOptions();
       const deltaY = e.clientY - startY;
 
-      if (Math.abs(deltaY) > 3) {
+      if (Math.abs(deltaY) > 4) {
         elements.descSplitContainer.classList.add("wheel-scrolling");
       }
 
-      // 36px drag per slot
-      const virtualDelta = -deltaY / 36;
+      // Ergonomic 64px drag distance per slot (tactile, deliberate control)
+      const virtualDelta = -deltaY / 64;
       let newVirtual = dragStartVirtual + virtualDelta;
 
       // Rubber banding at ends
       if (newVirtual < 0) {
-        newVirtual = newVirtual * 0.35;
+        newVirtual = newVirtual * 0.22;
       } else if (newVirtual > options.length) {
-        newVirtual = options.length + (newVirtual - options.length) * 0.35;
+        newVirtual = options.length + (newVirtual - options.length) * 0.22;
       }
 
       // Mechanical ratchet haptic tick when crossing an option boundary
@@ -1530,7 +1553,7 @@
 
       currentVirtualIndex = newVirtual;
       renderWheelSlots(currentVirtualIndex);
-      lastY = e.clientY;
+      e.preventDefault();
     });
 
     const endDrag = (e) => {
@@ -1538,18 +1561,44 @@
       isDraggingWheel = false;
 
       const options = getQuickFillOptions();
-      const elapsed = Date.now() - startTime;
-      const velocity = elapsed > 0 ? (e.clientY - lastY) / elapsed : 0;
+      const now = performance.now();
 
-      // Momentum target
-      let target = Math.round(currentVirtualIndex - velocity * 3.5);
+      // Check trailing velocity from last 80ms
+      const validMoves = recentMoves.filter(m => now - m.time <= 80);
+      let velocityY = 0;
+      if (validMoves.length >= 2) {
+        const oldest = validMoves[0];
+        const latest = validMoves[validMoves.length - 1];
+        const dt = latest.time - oldest.time;
+        if (dt > 15) {
+          velocityY = (latest.y - oldest.y) / dt; // px / ms
+        }
+      }
+
+      // Moving finger UP (velocityY < 0) scrolls to higher index (+1 or +2)
+      // Moving finger DOWN (velocityY > 0) scrolls to lower index (-1 or -2)
+      let slotImpulse = 0;
+      if (Math.abs(velocityY) > 0.45) {
+        const dir = velocityY < 0 ? 1 : -1;
+        const mag = Math.abs(velocityY) > 1.2 ? 2 : 1;
+        slotImpulse = dir * mag;
+      }
+
+      let target = Math.round(currentVirtualIndex + slotImpulse);
       target = Math.max(0, Math.min(options.length, target));
 
-      snapWheelToIndex(target, 220);
+      snapWheelToIndex(target, 240);
     };
 
     wrapper.addEventListener("pointerup", endDrag);
-    wrapper.addEventListener("pointercancel", endDrag);
+    wrapper.addEventListener("pointercancel", (e) => {
+      if (!isDraggingWheel) return;
+      isDraggingWheel = false;
+      const options = getQuickFillOptions();
+      // On cancel, cleanly snap to nearest slot with zero momentum fling
+      const target = Math.max(0, Math.min(options.length, Math.round(currentVirtualIndex)));
+      snapWheelToIndex(target, 200);
+    });
 
     // Mouse wheel scrolling for desktop testing
     wrapper.addEventListener("wheel", (e) => {
