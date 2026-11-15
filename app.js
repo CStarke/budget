@@ -75,7 +75,30 @@
     recentModal: document.getElementById("recentModal"),
     btnRefreshRecent: document.getElementById("btnRefreshRecent"),
     btnUndoRecent: document.getElementById("btnUndoRecent"),
-    recentList: document.getElementById("recentList")
+    recentList: document.getElementById("recentList"),
+    descSplitContainer: document.getElementById("descSplitContainer"),
+    descInputWrapper: document.getElementById("descInputWrapper"),
+    quickWheelWrapper: document.getElementById("quickWheelWrapper"),
+    wheelCylinder: document.getElementById("wheelCylinder"),
+    btnWheelReset: document.getElementById("btnWheelReset"),
+    btnOpenQuickFillSettings: document.getElementById("btnOpenQuickFillSettings"),
+    quickFillSettingsModal: document.getElementById("quickFillSettingsModal"),
+    btnCloseQuickFillSettings: document.getElementById("btnCloseQuickFillSettings"),
+    btnAddQuickFillOption: document.getElementById("btnAddQuickFillOption"),
+    qfSortableList: document.getElementById("qfSortableList"),
+    qfEmptyHint: document.getElementById("qfEmptyHint"),
+    quickFillEditorModal: document.getElementById("quickFillEditorModal"),
+    qfEditorTitle: document.getElementById("qfEditorTitle"),
+    btnCloseQuickFillEditor: document.getElementById("btnCloseQuickFillEditor"),
+    qfTitleInput: document.getElementById("qfTitleInput"),
+    btnQfCategory: document.getElementById("btnQfCategory"),
+    qfCatBtnText: document.getElementById("qfCatBtnText"),
+    btnQfFrom: document.getElementById("btnQfFrom"),
+    qfFromBtnText: document.getElementById("qfFromBtnText"),
+    btnQfTo: document.getElementById("btnQfTo"),
+    qfToBtnText: document.getElementById("qfToBtnText"),
+    btnSaveQuickFillOption: document.getElementById("btnSaveQuickFillOption"),
+    btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -242,7 +265,7 @@
   // Active Picker Modal State
   let activePickerField = null;
 
-  function openPicker(field, isDefault = false) {
+  function openPicker(field, isDefault = false, onSelectCallback = null) {
     activePickerField = field;
     elements.pickerList.innerHTML = "";
 
@@ -260,7 +283,7 @@
       currentValue = isDefault ? state.defaults.to : state.selectedTo;
     }
 
-    if (isDefault) {
+    if (isDefault || onSelectCallback) {
       items.push("(None)");
       if (!currentValue) {
         currentValue = "(None)";
@@ -309,6 +332,13 @@
         }
         btn.textContent = item;
         btn.addEventListener("click", () => {
+          if (onSelectCallback) {
+            haptic(12);
+            onSelectCallback(item);
+            closePicker();
+            return;
+          }
+
           if (isIncomeSpendingDisallowed) {
             haptic(12);
             if (isDefault) {
@@ -923,6 +953,10 @@
     currentCents = Math.round(parseFloat(item.amount) * 100);
     elements.amountInput.value = formatCentsWithCommas(currentCents);
     elements.descInput.value = item.description || "";
+    resetWheelToBlank();
+    if (elements.descInput.value.length > 0) {
+      elements.descSplitContainer.classList.add("desc-expanded");
+    }
     state.selectedCategory = item.category || "";
     state.selectedFrom = item.from || "";
     state.selectedTo = item.to || "";
@@ -954,7 +988,7 @@
     }
 
     // Strict validation: Description required
-    const desc = elements.descInput.value.trim();
+    const desc = activeQuickFill ? activeQuickFill.title : elements.descInput.value.trim();
     if (!desc) {
       haptic([20, 30, 20]);
       highlightError(elements.descInput);
@@ -1023,6 +1057,7 @@
       currentCents = 0;
       elements.amountInput.value = "";
       elements.descInput.value = "";
+      resetWheelToBlank();
       state.selectedCategory = state.defaults.category || "";
       state.selectedFrom = state.defaults.from || "";
       state.selectedTo = state.defaults.to || "";
@@ -1281,6 +1316,595 @@
     }
   });
 
+  // =========================================================================
+  // Quick Fill Options & 3D Rotating Wheel Controller
+  // =========================================================================
+
+  const QUICK_FILL_KEY = "budget_quick_fill_options";
+
+  function getQuickFillOptions() {
+    try {
+      return JSON.parse(localStorage.getItem(QUICK_FILL_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveQuickFillOptions(opts) {
+    try {
+      localStorage.setItem(QUICK_FILL_KEY, JSON.stringify(opts));
+      updateWheelVisibility();
+    } catch (e) {
+      console.error("Failed to save quick fill options:", e);
+    }
+  }
+
+  let activeQuickFill = null;
+  let currentWheelIndex = 0; // 0 = Blank slot, 1..N = options
+  let currentVirtualIndex = 0;
+  let isDraggingWheel = false;
+  let dragStartY = 0;
+  let dragStartVirtual = 0;
+  let lastHapticIndex = 0;
+  let wheelAnimFrame = null;
+
+  function updateWheelVisibility() {
+    const options = getQuickFillOptions();
+    if (!elements.descSplitContainer) return;
+    if (options.length === 0) {
+      elements.descSplitContainer.classList.add("no-wheel");
+    } else {
+      elements.descSplitContainer.classList.remove("no-wheel");
+      renderWheelSlots(currentWheelIndex);
+    }
+  }
+
+  function renderWheelSlots(virtualIndex = currentVirtualIndex) {
+    const options = getQuickFillOptions();
+    if (!elements.wheelCylinder) return;
+
+    elements.wheelCylinder.innerHTML = "";
+    if (options.length === 0) return;
+
+    // Slot 0 is blank, Slots 1..N are options
+    const totalSlots = options.length + 1;
+
+    for (let i = 0; i < totalSlots; i++) {
+      const diff = i - virtualIndex;
+      if (Math.abs(diff) > 2.2) continue; // Out of view
+
+      const slot = document.createElement("div");
+      slot.className = "wheel-slot";
+
+      const title = i === 0 ? "" : options[i - 1].title;
+      slot.textContent = title;
+
+      // 3D rotation and cylinder translation
+      const angle = diff * -42; // degrees rotation on X axis
+      const translateY = diff * 18; // px vertical offset
+      const translateZ = Math.max(0, 30 - Math.abs(diff) * 16);
+      const scale = Math.max(0.72, 1 - Math.abs(diff) * 0.15);
+      const opacity = Math.max(0, 1 - Math.abs(diff) * 0.65);
+
+      slot.style.transform = `rotateX(${angle}deg) translateY(${translateY}px) translateZ(${translateZ}px) scale(${scale})`;
+      slot.style.opacity = String(opacity);
+
+      if (Math.abs(diff) < 0.35) {
+        slot.classList.add("center");
+        if (i > 0) slot.classList.add("active-option");
+      } else if (diff < 0) {
+        slot.classList.add("above");
+      } else {
+        slot.classList.add("below");
+      }
+
+      elements.wheelCylinder.appendChild(slot);
+    }
+  }
+
+  function snapWheelToIndex(targetIndex, duration = 200) {
+    if (wheelAnimFrame) cancelAnimationFrame(wheelAnimFrame);
+
+    const startVal = currentVirtualIndex;
+    const endVal = targetIndex;
+    const startTime = performance.now();
+
+    function animate(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      // Ease out cubic
+      const ease = 1 - Math.pow(1 - progress, 3);
+      currentVirtualIndex = startVal + (endVal - startVal) * ease;
+      renderWheelSlots(currentVirtualIndex);
+
+      if (progress < 1) {
+        wheelAnimFrame = requestAnimationFrame(animate);
+      } else {
+        currentVirtualIndex = endVal;
+        currentWheelIndex = endVal;
+        renderWheelSlots(currentWheelIndex);
+        onWheelSnapped(endVal);
+      }
+    }
+
+    wheelAnimFrame = requestAnimationFrame(animate);
+  }
+
+  function onWheelSnapped(index) {
+    const options = getQuickFillOptions();
+    if (index > 0 && index <= options.length) {
+      const selected = options[index - 1];
+      activeQuickFill = selected;
+
+      // Autofill Category, From, To
+      if (selected.category) state.selectedCategory = selected.category;
+      if (selected.from) state.selectedFrom = selected.from;
+      if (selected.to) state.selectedTo = selected.to;
+      updateAllButtons();
+
+      // Expand wheel to 100% width
+      elements.descSplitContainer.classList.remove("wheel-scrolling");
+      elements.descSplitContainer.classList.add("wheel-expanded");
+      haptic(15);
+    } else {
+      // Reverted to blank slot
+      activeQuickFill = null;
+      elements.descSplitContainer.classList.remove("wheel-expanded");
+      elements.descSplitContainer.classList.remove("wheel-scrolling");
+    }
+  }
+
+  function resetWheelToBlank() {
+    currentWheelIndex = 0;
+    currentVirtualIndex = 0;
+    activeQuickFill = null;
+    if (elements.descSplitContainer) {
+      elements.descSplitContainer.classList.remove("wheel-expanded");
+      elements.descSplitContainer.classList.remove("wheel-scrolling");
+      elements.descSplitContainer.classList.remove("desc-expanded");
+    }
+    renderWheelSlots(0);
+  }
+
+  function initWheelEvents() {
+    const wrapper = elements.quickWheelWrapper;
+    if (!wrapper) return;
+
+    let startY = 0;
+    let startTime = 0;
+    let lastY = 0;
+
+    wrapper.addEventListener("pointerdown", (e) => {
+      // If clicking reset button, ignore wheel drag
+      if (e.target.closest("#btnWheelReset")) return;
+
+      const options = getQuickFillOptions();
+      if (options.length === 0) return;
+
+      isDraggingWheel = true;
+      startY = e.clientY;
+      lastY = e.clientY;
+      startTime = Date.now();
+      dragStartVirtual = currentVirtualIndex;
+      lastHapticIndex = Math.round(currentVirtualIndex);
+
+      wrapper.setPointerCapture(e.pointerId);
+      if (wheelAnimFrame) cancelAnimationFrame(wheelAnimFrame);
+    });
+
+    wrapper.addEventListener("pointermove", (e) => {
+      if (!isDraggingWheel) return;
+
+      const options = getQuickFillOptions();
+      const deltaY = e.clientY - startY;
+
+      if (Math.abs(deltaY) > 3) {
+        elements.descSplitContainer.classList.add("wheel-scrolling");
+      }
+
+      // 36px drag per slot
+      const virtualDelta = -deltaY / 36;
+      let newVirtual = dragStartVirtual + virtualDelta;
+
+      // Rubber banding at ends
+      if (newVirtual < 0) {
+        newVirtual = newVirtual * 0.35;
+      } else if (newVirtual > options.length) {
+        newVirtual = options.length + (newVirtual - options.length) * 0.35;
+      }
+
+      // Mechanical ratchet haptic tick when crossing an option boundary
+      const candidateIndex = Math.round(newVirtual);
+      if (candidateIndex !== lastHapticIndex && candidateIndex >= 0 && candidateIndex <= options.length) {
+        haptic(10);
+        lastHapticIndex = candidateIndex;
+      }
+
+      currentVirtualIndex = newVirtual;
+      renderWheelSlots(currentVirtualIndex);
+      lastY = e.clientY;
+    });
+
+    const endDrag = (e) => {
+      if (!isDraggingWheel) return;
+      isDraggingWheel = false;
+
+      const options = getQuickFillOptions();
+      const elapsed = Date.now() - startTime;
+      const velocity = elapsed > 0 ? (e.clientY - lastY) / elapsed : 0;
+
+      // Momentum target
+      let target = Math.round(currentVirtualIndex - velocity * 3.5);
+      target = Math.max(0, Math.min(options.length, target));
+
+      snapWheelToIndex(target, 220);
+    };
+
+    wrapper.addEventListener("pointerup", endDrag);
+    wrapper.addEventListener("pointercancel", endDrag);
+
+    // Mouse wheel scrolling for desktop testing
+    wrapper.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const options = getQuickFillOptions();
+      if (options.length === 0) return;
+
+      const dir = e.deltaY > 0 ? 1 : -1;
+      let target = currentWheelIndex + dir;
+      target = Math.max(0, Math.min(options.length, target));
+      if (target !== currentWheelIndex) {
+        haptic(10);
+        snapWheelToIndex(target, 180);
+      }
+    }, { passive: false });
+  }
+
+  // Right-side X Reset Button on expanded wheel
+  if (elements.btnWheelReset) {
+    elements.btnWheelReset.addEventListener("click", (e) => {
+      e.stopPropagation();
+      haptic(15);
+      resetWheelToBlank();
+      elements.descInput.focus();
+    });
+  }
+
+  // Dual-edge bezier typing expansion on description input
+  if (elements.descInput) {
+    elements.descInput.addEventListener("input", () => {
+      if (elements.descInput.value.length > 0) {
+        if (currentWheelIndex !== 0) {
+          resetWheelToBlank();
+        }
+        elements.descSplitContainer.classList.add("desc-expanded");
+      } else {
+        elements.descSplitContainer.classList.remove("desc-expanded");
+      }
+    });
+  }
+
+  // =========================================================================
+  // Quick Fill Settings Manager & Reorderable List
+  // =========================================================================
+
+  function openQuickFillSettings() {
+    renderQuickFillSettingsList();
+    elements.quickFillSettingsModal.classList.add("open");
+  }
+
+  function closeQuickFillSettings() {
+    elements.quickFillSettingsModal.classList.remove("open");
+  }
+
+  function renderQuickFillSettingsList() {
+    const list = elements.qfSortableList;
+    if (!list) return;
+
+    list.innerHTML = "";
+    const options = getQuickFillOptions();
+
+    if (options.length === 0) {
+      if (elements.qfEmptyHint) elements.qfEmptyHint.style.display = "block";
+      return;
+    }
+
+    if (elements.qfEmptyHint) elements.qfEmptyHint.style.display = "none";
+
+    options.forEach((opt, index) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "qf-item";
+      itemEl.dataset.id = opt.id;
+      itemEl.dataset.index = index;
+
+      // Drag handle
+      const handle = document.createElement("div");
+      handle.className = "qf-drag-handle";
+      handle.innerHTML = "&#9776;"; // ☰ hamburger drag handle
+      handle.title = "Drag to reorder";
+
+      // Info text
+      const info = document.createElement("div");
+      info.className = "qf-item-info";
+      const title = document.createElement("div");
+      title.className = "qf-item-title";
+      title.textContent = opt.title;
+
+      const badges = document.createElement("div");
+      badges.className = "qf-item-badges";
+      const catText = opt.category || "No Category";
+      const fromText = opt.from || "Any";
+      const toText = opt.to || "Any";
+      badges.textContent = `${catText} • ${fromText} → ${toText}`;
+
+      info.appendChild(title);
+      info.appendChild(badges);
+
+      // Actions
+      const actions = document.createElement("div");
+      actions.className = "qf-item-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "qf-action-btn";
+      editBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+      `;
+      editBtn.title = "Edit option";
+      editBtn.addEventListener("click", () => {
+        openQuickFillEditor(opt);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "qf-action-btn delete";
+      deleteBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      `;
+      deleteBtn.title = "Delete option";
+      deleteBtn.addEventListener("click", () => {
+        haptic(15);
+        const filtered = getQuickFillOptions().filter((o) => o.id !== opt.id);
+        saveQuickFillOptions(filtered);
+        renderQuickFillSettingsList();
+        showToast(`Option "${opt.title}" removed.`, "info");
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+
+      itemEl.appendChild(handle);
+      itemEl.appendChild(info);
+      itemEl.appendChild(actions);
+
+      list.appendChild(itemEl);
+    });
+
+    initSortableDrag(list);
+  }
+
+  // Fluid Drag-to-Reorder Engine for Quick Fill Options
+  function initSortableDrag(container) {
+    let activeItem = null;
+
+    container.querySelectorAll(".qf-drag-handle").forEach((handle) => {
+      handle.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        activeItem = handle.closest(".qf-item");
+        if (!activeItem) return;
+
+        haptic(15);
+        activeItem.classList.add("dragging");
+        handle.setPointerCapture(e.pointerId);
+
+        const onPointerMove = (moveEvt) => {
+          if (!activeItem) return;
+          const currentY = moveEvt.clientY;
+
+          const items = [...container.querySelectorAll(".qf-item:not(.dragging)")];
+          const nextItem = items.find((item) => {
+            const rect = item.getBoundingClientRect();
+            return currentY < rect.top + rect.height / 2;
+          });
+
+          if (nextItem) {
+            container.insertBefore(activeItem, nextItem);
+          } else {
+            container.appendChild(activeItem);
+          }
+        };
+
+        const onPointerUp = (upEvt) => {
+          if (!activeItem) return;
+          activeItem.classList.remove("dragging");
+          handle.releasePointerCapture(upEvt.pointerId);
+
+          handle.removeEventListener("pointermove", onPointerMove);
+          handle.removeEventListener("pointerup", onPointerUp);
+          handle.removeEventListener("pointercancel", onPointerUp);
+
+          // Save new order to localStorage
+          const newOrderIds = [...container.querySelectorAll(".qf-item")].map((el) => el.dataset.id);
+          const currentOptions = getQuickFillOptions();
+          const reordered = newOrderIds
+            .map((id) => currentOptions.find((o) => o.id === id))
+            .filter(Boolean);
+
+          saveQuickFillOptions(reordered);
+          haptic(12);
+          activeItem = null;
+        };
+
+        handle.addEventListener("pointermove", onPointerMove);
+        handle.addEventListener("pointerup", onPointerUp);
+        handle.addEventListener("pointercancel", onPointerUp);
+      });
+    });
+  }
+
+  // =========================================================================
+  // Add / Edit Quick Fill Option Dialog
+  // =========================================================================
+
+  let qfEditorState = {
+    id: null,
+    title: "",
+    category: "",
+    from: "",
+    to: ""
+  };
+
+  function openQuickFillEditor(opt = null) {
+    if (opt) {
+      qfEditorState = { ...opt };
+      elements.qfEditorTitle.textContent = "Edit Wheel Option";
+      elements.btnDeleteQuickFillOption.style.display = "block";
+    } else {
+      qfEditorState = {
+        id: null,
+        title: "",
+        category: "",
+        from: "",
+        to: ""
+      };
+      elements.qfEditorTitle.textContent = "Add Wheel Option";
+      elements.btnDeleteQuickFillOption.style.display = "none";
+    }
+
+    elements.qfTitleInput.value = qfEditorState.title;
+    elements.qfCatBtnText.textContent = qfEditorState.category || "(None)";
+    elements.qfFromBtnText.textContent = qfEditorState.from || "(None)";
+    elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
+
+    elements.quickFillEditorModal.classList.add("open");
+    setTimeout(() => elements.qfTitleInput.focus(), 200);
+  }
+
+  function closeQuickFillEditor() {
+    elements.quickFillEditorModal.classList.remove("open");
+  }
+
+  function saveQuickFillOption() {
+    const title = elements.qfTitleInput.value.trim();
+    if (!title) {
+      haptic([20, 30, 20]);
+      highlightError(elements.qfTitleInput);
+      elements.qfTitleInput.focus();
+      return;
+    }
+
+    const options = getQuickFillOptions();
+    if (qfEditorState.id) {
+      // Update existing
+      const idx = options.findIndex((o) => o.id === qfEditorState.id);
+      if (idx !== -1) {
+        options[idx] = {
+          ...options[idx],
+          title,
+          category: qfEditorState.category,
+          from: qfEditorState.from,
+          to: qfEditorState.to
+        };
+      }
+    } else {
+      // Add new
+      options.push({
+        id: "qf_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+        title,
+        category: qfEditorState.category,
+        from: qfEditorState.from,
+        to: qfEditorState.to
+      });
+    }
+
+    saveQuickFillOptions(options);
+    closeQuickFillEditor();
+    renderQuickFillSettingsList();
+    haptic(15);
+    showToast(`Option "${title}" saved to wheel!`, "success");
+  }
+
+  // Quick Fill Option Dialog Button Wiring
+  if (elements.btnQfCategory) {
+    elements.btnQfCategory.addEventListener("click", () => {
+      openPicker("category", false, (val) => {
+        qfEditorState.category = val === "(None)" ? "" : val;
+        elements.qfCatBtnText.textContent = qfEditorState.category || "(None)";
+      });
+    });
+  }
+
+  if (elements.btnQfFrom) {
+    elements.btnQfFrom.addEventListener("click", () => {
+      openPicker("from", false, (val) => {
+        qfEditorState.from = val === "(None)" ? "" : val;
+        elements.qfFromBtnText.textContent = qfEditorState.from || "(None)";
+      });
+    });
+  }
+
+  if (elements.btnQfTo) {
+    elements.btnQfTo.addEventListener("click", () => {
+      openPicker("to", false, (val) => {
+        qfEditorState.to = val === "(None)" ? "" : val;
+        elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
+      });
+    });
+  }
+
+  if (elements.btnSaveQuickFillOption) {
+    elements.btnSaveQuickFillOption.addEventListener("click", saveQuickFillOption);
+  }
+
+  if (elements.btnDeleteQuickFillOption) {
+    elements.btnDeleteQuickFillOption.addEventListener("click", () => {
+      if (qfEditorState.id) {
+        haptic(15);
+        const filtered = getQuickFillOptions().filter((o) => o.id !== qfEditorState.id);
+        saveQuickFillOptions(filtered);
+        closeQuickFillEditor();
+        renderQuickFillSettingsList();
+        showToast("Option deleted.", "info");
+      }
+    });
+  }
+
+  if (elements.btnOpenQuickFillSettings) {
+    elements.btnOpenQuickFillSettings.addEventListener("click", () => {
+      closeSettings();
+      openQuickFillSettings();
+    });
+  }
+
+  if (elements.btnCloseQuickFillSettings) {
+    elements.btnCloseQuickFillSettings.addEventListener("click", closeQuickFillSettings);
+  }
+
+  if (elements.btnAddQuickFillOption) {
+    elements.btnAddQuickFillOption.addEventListener("click", () => openQuickFillEditor());
+  }
+
+  if (elements.btnCloseQuickFillEditor) {
+    elements.btnCloseQuickFillEditor.addEventListener("click", closeQuickFillEditor);
+  }
+
+  if (elements.quickFillSettingsModal) {
+    elements.quickFillSettingsModal.addEventListener("click", (e) => {
+      if (e.target === elements.quickFillSettingsModal) closeQuickFillSettings();
+    });
+  }
+
+  if (elements.quickFillEditorModal) {
+    elements.quickFillEditorModal.addEventListener("click", (e) => {
+      if (e.target === elements.quickFillEditorModal) closeQuickFillEditor();
+    });
+  }
+
   // Register Service Worker for PWA (Firefox / Chrome / Safari)
   if ("serviceWorker" in navigator) {
     const registerSW = () => {
@@ -1305,6 +1929,8 @@
   updateAllButtons();
   updateDefaultButtons();
   updateQueueUI();
+  updateWheelVisibility();
+  initWheelEvents();
 
   if (state.scriptUrl) {
     if (navigator.onLine) {
