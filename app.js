@@ -1494,6 +1494,11 @@
       const options = getQuickFillOptions();
       if (options.length === 0) return;
       e.stopPropagation();
+
+      // Dismiss keyboard immediately when touching the wheel
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
     }, { passive: true });
 
     wrapper.addEventListener("pointerdown", (e) => {
@@ -1502,6 +1507,11 @@
 
       const options = getQuickFillOptions();
       if (options.length === 0) return;
+
+      // Dismiss keyboard when starting to interact with the wheel
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
 
       isDraggingWheel = true;
       startY = e.clientY;
@@ -1531,6 +1541,9 @@
 
       if (Math.abs(deltaY) > 4) {
         elements.descSplitContainer.classList.add("wheel-scrolling");
+        if (document.activeElement && typeof document.activeElement.blur === "function") {
+          document.activeElement.blur();
+        }
       }
 
       // Ergonomic 64px drag distance per slot (tactile, deliberate control)
@@ -1623,7 +1636,6 @@
       haptic(15);
       elements.btnWheelReset.blur();
       resetWheelToBlank();
-      elements.descInput.focus();
     });
   }
 

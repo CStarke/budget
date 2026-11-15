@@ -1029,6 +1029,7 @@ body {
   border: none;
   color: var(--text-muted);
   font-size: 26px;
+  font-weight: 300;
   line-height: 38px;
   text-align: center;
   display: flex;
@@ -1055,9 +1056,9 @@ body {
 .desc-split-container.wheel-expanded .btn-wheel-reset:active {
   background: transparent;
   border: none;
-  color: #ef4444;
+  color: var(--text-secondary);
   opacity: 1;
-  transform: translateY(-50%) scale(1.15);
+  transform: translateY(-50%) scale(1.1);
 }
 
 /* 3D Vertical Cylinder Drum Slots */
