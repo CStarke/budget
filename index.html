@@ -58,10 +58,20 @@
           <input 
             type="text" 
             id="amountInput" 
+            name="budget_amount"
             class="amount-input" 
             placeholder="0.00" 
             inputmode="numeric" 
+            pattern="[0-9]*"
             autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
+            data-dashlane-ignore="true"
+            data-form-type="other"
             autofocus
           >
         </div>
@@ -97,9 +107,18 @@
         <input 
           type="text" 
           id="descInput" 
+          name="budget_description"
           class="text-input" 
           placeholder="e.g. Lunch with team, Gas, Groceries"
+          autocomplete="off"
+          autocorrect="off"
           autocapitalize="sentences"
+          spellcheck="false"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-bwignore="true"
+          data-dashlane-ignore="true"
+          data-form-type="other"
           enterkeyhint="next"
         >
       </section>
@@ -169,8 +188,18 @@
           <input 
             type="url" 
             id="scriptUrlInput" 
+            name="budget_script_url"
             class="settings-input" 
             placeholder="https://script.google.com/macros/s/.../exec"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
+            data-dashlane-ignore="true"
+            data-form-type="other"
           >
           <p class="settings-tip">
             In your Google Sheet, go to <b>Extensions &gt; Apps Script</b>, paste the script code, click <b>Deploy &gt; New deployment &gt; Web app</b>, and paste the URL.

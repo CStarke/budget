@@ -555,6 +555,21 @@
     const item = {
       id: "tx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
       queuedAt: Date.now(),
+      action: "add",
+      ...payload
+    };
+    queue.push(item);
+    saveOfflineQueue(queue);
+    updateQueueUI();
+    return queue.length;
+  }
+
+  function enqueueUndo(payload) {
+    const queue = getOfflineQueue();
+    const item = {
+      id: "undo_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
+      queuedAt: Date.now(),
+      action: "undo",
       ...payload
     };
     queue.push(item);
@@ -580,7 +595,7 @@
       if (count === 0) {
         elements.queueStatusText.textContent = "No pending transactions.";
       } else {
-        elements.queueStatusText.textContent = `${count} transaction${count === 1 ? "" : "s"} waiting to sync.`;
+        elements.queueStatusText.textContent = `${count} pending change${count === 1 ? "" : "s"} waiting to sync.`;
       }
     }
 
@@ -611,9 +626,19 @@
     updateStatus("syncing", `Syncing queue (${queue.length})...`);
 
     let syncedCount = 0;
+    let hadUndo = false;
     while (queue.length > 0) {
       const item = queue[0];
-      const payload = {
+      const isUndo = item.action === "undo";
+      const payload = isUndo ? {
+        action: "undo",
+        date: item.date,
+        description: item.description,
+        category: item.category,
+        from: item.from,
+        to: item.to,
+        amount: item.amount
+      } : {
         date: item.date,
         description: item.description,
         category: item.category,
@@ -636,6 +661,7 @@
         queue.shift();
         saveOfflineQueue(queue);
         syncedCount++;
+        if (isUndo) hadUndo = true;
         updateQueueUI();
       } catch (err) {
         console.warn("Queue sync paused:", err);
@@ -649,7 +675,10 @@
     const remaining = queue.length;
     if (syncedCount > 0) {
       haptic([25, 50, 25]);
-      showToast(`Synced ${syncedCount} offline transaction${syncedCount === 1 ? "" : "s"} to ${state.sheetName || "Sheet"}!`, "success");
+      showToast(`Synced ${syncedCount} offline change${syncedCount === 1 ? "" : "s"} to ${state.sheetName || "Sheet"}!`, "success");
+      if (hadUndo) {
+        fetchRecentTransactionsFromSheet();
+      }
     }
 
     if (remaining === 0) {
@@ -837,36 +866,56 @@
     const filteredQueue = queue.filter(
       (q) => !(q.description === item.description && Math.abs(q.amount - item.amount) < 0.01 && q.date === item.date)
     );
-    if (filteredQueue.length !== queue.length) {
+    const wasInOfflineQueue = filteredQueue.length !== queue.length;
+
+    if (wasInOfflineQueue) {
       saveOfflineQueue(filteredQueue);
       updateQueueUI();
-    }
+    } else {
+      // 3. Dispatch undo request to Google Sheet (or queue offline if disconnected)
+      if (navigator.onLine && state.scriptUrl) {
+        try {
+          await fetch(state.scriptUrl, {
+            method: "POST",
+            mode: "no-cors",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8"
+            },
+            body: JSON.stringify({
+              action: "undo",
+              date: item.date,
+              description: item.description,
+              category: item.category,
+              from: item.from,
+              to: item.to,
+              amount: item.amount
+            })
+          });
 
-    // 3. Dispatch undo request to Google Sheet if online
-    if (navigator.onLine && state.scriptUrl) {
-      try {
-        await fetch(state.scriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
-          body: JSON.stringify({
-            action: "undo",
+          setTimeout(() => {
+            fetchRecentTransactionsFromSheet();
+          }, 500);
+        } catch (e) {
+          console.warn("Could not dispatch undo to sheet, queueing offline:", e);
+          enqueueUndo({
             date: item.date,
             description: item.description,
             category: item.category,
             from: item.from,
             to: item.to,
             amount: item.amount
-          })
+          });
+        }
+      } else {
+        // Offline: Queue undo action to sync automatically once reconnected
+        enqueueUndo({
+          date: item.date,
+          description: item.description,
+          category: item.category,
+          from: item.from,
+          to: item.to,
+          amount: item.amount
         });
-
-        setTimeout(() => {
-          fetchRecentTransactionsFromSheet();
-        }, 500);
-      } catch (e) {
-        console.warn("Could not dispatch undo to sheet:", e);
       }
     }
 
@@ -883,7 +932,11 @@
     updateAllButtons();
 
     closeRecentModal();
-    showToast("Transaction undone & restored to form.", "success");
+    if (!wasInOfflineQueue && !navigator.onLine) {
+      showToast("Undone & restored. Offline undo queued to sync.", "info");
+    } else {
+      showToast("Transaction undone & restored to form.", "success");
+    }
     elements.amountInput.focus();
   }
 
