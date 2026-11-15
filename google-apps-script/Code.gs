@@ -27,14 +27,22 @@ var CONFIG = {
 };
 
 /**
- * Finds the target budget sheet for the current year or fallback.
+ * Finds the target budget sheet matching the transaction date's year (e.g. "Budget 2026") or fallback.
  */
-function getTargetSheet() {
+function getTargetSheet(dateInput) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var currentYear = new Date().getFullYear();
-  var expectedName = CONFIG.SHEET_NAME_PREFIX + currentYear;
+  var targetYear = new Date().getFullYear();
+  if (dateInput) {
+    try {
+      var parsed = parseDateInput(dateInput);
+      if (parsed && !isNaN(parsed.getFullYear())) {
+        targetYear = parsed.getFullYear();
+      }
+    } catch (e) {}
+  }
+  var expectedName = CONFIG.SHEET_NAME_PREFIX + targetYear;
   
-  // 1. Try "Budget {Current Year}" (e.g. Budget 2026)
+  // 1. Try "Budget {Target Year}" (e.g. Budget 2026)
   var sheet = ss.getSheetByName(expectedName);
   if (sheet) return sheet;
   
@@ -366,7 +374,7 @@ function parseDateInput(inputStr) {
  * Appends transaction to the budget sheet.
  */
 function appendTransaction(data) {
-  var sheet = getTargetSheet();
+  var sheet = getTargetSheet(data ? data.date : null);
   var colMap = detectColumns(sheet);
   var targetRow = findNextAvailableRow(sheet, colMap);
   
@@ -412,7 +420,7 @@ function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).toLowerCase() : "";
     if (action === "recent" || action === "getrecent") {
-      var targetSheet = getTargetSheet();
+      var targetSheet = getTargetSheet(e && e.parameter ? e.parameter.date : null);
       var colMap = detectColumns(targetSheet);
       var recent = getRecentTransactionsFromSheet(targetSheet, colMap, 5);
       return ContentService.createTextOutput(JSON.stringify({
@@ -438,7 +446,7 @@ function doGet(e) {
  * Uses batch range fetch for high performance.
  */
 function deleteLastMatchingTransaction(data) {
-  var sheet = getTargetSheet();
+  var sheet = getTargetSheet(data ? data.date : null);
   var colMap = detectColumns(sheet);
   var lastRow = sheet.getLastRow();
   var headerRow = colMap.headerRow || 1;
