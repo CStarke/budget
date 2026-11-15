@@ -1970,9 +1970,6 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.quickFillEditorModal.classList.add("open");
-    if (!opt) {
-      setTimeout(() => elements.qfTitleInput.focus(), 200);
-    }
   }
 
   function closeQuickFillEditor() {

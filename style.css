@@ -35,12 +35,10 @@ input, button, textarea {
   font-family: inherit;
 }
 
-body {
+html, body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-family);
-  min-height: 100vh;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -55,7 +53,6 @@ body {
   padding: 16px 16px calc(var(--safe-bottom) + 24px) 16px;
   display: flex;
   flex-direction: column;
-  flex: 1;
 }
 
 /* Header */
@@ -755,12 +752,14 @@ body {
   z-index: 200;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
 .modal-overlay.open {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 
 .modal-sheet {
