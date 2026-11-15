@@ -906,6 +906,7 @@
 
     // 1. Remove from recent list
     removeRecentTransaction(item.id);
+    renderRecentList();
 
     // 2. Remove from offline queue if it hasn't synced yet
     const queue = getOfflineQueue();
@@ -965,29 +966,12 @@
       }
     }
 
-    // 4. Restore values into form for easy editing
-    currentCents = Math.round(parseFloat(item.amount) * 100);
-    elements.amountInput.value = formatCentsWithCommas(currentCents);
-    elements.descInput.value = item.description || "";
-    resetWheelToBlank();
-    if (elements.descInput.value.length > 0) {
-      elements.descSplitContainer.classList.add("desc-expanded");
-    }
-    state.selectedCategory = item.category || "";
-    state.selectedFrom = item.from || "";
-    state.selectedTo = item.to || "";
-    if (item.date) {
-      setDate(item.date);
-    }
-    updateAllButtons();
-
     closeRecentModal();
     if (!wasInOfflineQueue && !navigator.onLine) {
-      showToast("Undone & restored. Offline undo queued to sync.", "info");
+      showToast("Transaction undone. Offline undo queued to sync.", "info");
     } else {
-      showToast("Transaction undone & restored to form.", "success");
+      showToast("Transaction undone.", "success");
     }
-    elements.amountInput.focus();
   }
 
   // Submit Transaction
