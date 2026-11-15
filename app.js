@@ -1137,25 +1137,25 @@
     elements.pickerCancelBtn.addEventListener("click", closePicker);
   }
 
-  // Tap Logo to Force App Update & Clear Cache
+  // Tap Logo to Force App Update & Refresh
   async function forceAppUpdate() {
     haptic(15);
-    showToast("Refreshing app...", "info");
-    if ("caches" in window) {
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch (e) {}
+    if (!navigator.onLine) {
+      showToast("Offline: running latest saved version.", "info");
+      return;
     }
+    showToast("Checking for updates...", "info");
     if ("serviceWorker" in navigator) {
       try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations.map((r) => r.unregister()));
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          await reg.update();
+        }
       } catch (e) {}
     }
     setTimeout(() => {
-      window.location.reload(true);
-    }, 300);
+      window.location.reload();
+    }, 400);
   }
 
   if (elements.brandLogo) {
@@ -1228,15 +1228,23 @@
     }
   });
 
-  // Register Service Worker for Firefox / Chrome PWA
+  // Register Service Worker for PWA (Firefox / Chrome / Safari)
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
+    const registerSW = () => {
       navigator.serviceWorker.register("./sw.js").then((reg) => {
-        reg.update();
+        if (navigator.onLine) {
+          reg.update();
+        }
       }).catch((err) => {
         console.log("ServiceWorker registration skipped/failed:", err);
       });
-    });
+    };
+
+    if (document.readyState === "complete") {
+      registerSW();
+    } else {
+      window.addEventListener("load", registerSW);
+    }
   }
 
   // Init
@@ -1246,9 +1254,12 @@
   updateQueueUI();
 
   if (state.scriptUrl) {
-    syncOptions(false);
     if (navigator.onLine) {
+      syncOptions(false);
       processOfflineQueue();
+    } else {
+      const queue = getOfflineQueue();
+      updateStatus("", queue.length > 0 ? `Offline (${queue.length} pending)` : (state.sheetName ? `Offline (${state.sheetName})` : "Offline"));
     }
   } else {
     updateStatus("", "Tap ⚙ to connect sheet");
