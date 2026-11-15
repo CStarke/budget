@@ -266,7 +266,7 @@
   // Active Picker Modal State
   let activePickerField = null;
 
-  function openPicker(field, isDefault = false, onSelectCallback = null) {
+  function openPicker(field, isDefault = false, onSelectCallback = null, customCurrentValue = null) {
     activePickerField = field;
     elements.pickerList.innerHTML = "";
 
@@ -275,13 +275,19 @@
 
     if (field === "category") {
       items = [...(state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category)];
-      currentValue = isDefault ? state.defaults.category : state.selectedCategory;
+      currentValue = customCurrentValue !== null
+        ? customCurrentValue
+        : (isDefault ? state.defaults.category : state.selectedCategory);
     } else if (field === "from") {
       items = [...(state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from)];
-      currentValue = isDefault ? state.defaults.from : state.selectedFrom;
+      currentValue = customCurrentValue !== null
+        ? customCurrentValue
+        : (isDefault ? state.defaults.from : state.selectedFrom);
     } else if (field === "to") {
       items = [...(state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to)];
-      currentValue = isDefault ? state.defaults.to : state.selectedTo;
+      currentValue = customCurrentValue !== null
+        ? customCurrentValue
+        : (isDefault ? state.defaults.to : state.selectedTo);
     }
 
     if (isDefault || onSelectCallback) {
@@ -309,7 +315,16 @@
 
         const itemLower = item.trim().toLowerCase();
 
-        if (!isDefault) {
+        if (customCurrentValue !== null) {
+          const otherVal = field === "from" ? (qfEditorState.to || "") : (qfEditorState.from || "");
+          const otherLower = otherVal.trim().toLowerCase();
+          if (otherLower && otherLower !== "(none)") {
+            isConflicting = (itemLower === otherLower);
+            isIncomeSpendingDisallowed = 
+              (field === "from" && itemLower === "income" && otherLower === "spending") ||
+              (field === "to" && itemLower === "spending" && otherLower === "income");
+          }
+        } else if (!isDefault) {
           isConflicting = (field === "from" && state.selectedTo && itemLower === state.selectedTo.trim().toLowerCase()) ||
                           (field === "to" && state.selectedFrom && itemLower === state.selectedFrom.trim().toLowerCase());
           
@@ -2015,7 +2030,7 @@
       openPicker("category", false, (val) => {
         qfEditorState.category = val === "(None)" ? "" : val;
         elements.qfCatBtnText.textContent = qfEditorState.category || "(None)";
-      });
+      }, qfEditorState.category);
     });
   }
 
@@ -2024,7 +2039,7 @@
       openPicker("from", false, (val) => {
         qfEditorState.from = val === "(None)" ? "" : val;
         elements.qfFromBtnText.textContent = qfEditorState.from || "(None)";
-      });
+      }, qfEditorState.from);
     });
   }
 
@@ -2033,7 +2048,7 @@
       openPicker("to", false, (val) => {
         qfEditorState.to = val === "(None)" ? "" : val;
         elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
-      });
+      }, qfEditorState.to);
     });
   }
 
