@@ -1746,61 +1746,138 @@
     initSortableDrag(list);
   }
 
-  // Fluid Drag-to-Reorder Engine for Quick Fill Options
+  // Fluid GPU-Transform Drag-to-Reorder Engine for Quick Fill Options
   function initSortableDrag(container) {
-    let activeItem = null;
+    const handles = container.querySelectorAll(".qf-drag-handle");
+    if (!handles.length) return;
 
-    container.querySelectorAll(".qf-drag-handle").forEach((handle) => {
+    handles.forEach((handle) => {
+      // Prevent browser default touch behavior on the handle
+      handle.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+      }, { passive: false });
+
       handle.addEventListener("pointerdown", (e) => {
         e.preventDefault();
-        activeItem = handle.closest(".qf-item");
-        if (!activeItem) return;
+        e.stopPropagation();
+
+        const itemEl = handle.closest(".qf-item");
+        if (!itemEl) return;
+
+        const allItems = [...container.querySelectorAll(".qf-item")];
+        const startIndex = allItems.indexOf(itemEl);
+        if (startIndex === -1 || allItems.length < 2) return;
 
         haptic(15);
-        activeItem.classList.add("dragging");
-        handle.setPointerCapture(e.pointerId);
+
+        // Precompute initial geometry of all items
+        const itemHeights = allItems.map((el) => el.offsetHeight);
+        const gap = 10; // CSS gap between items in px
+        const itemStep = itemHeights[startIndex] + gap;
+
+        // Calculate initial vertical midpoints of all items relative to viewport
+        const initialRects = allItems.map((el) => el.getBoundingClientRect());
+        const startClientY = e.clientY;
+        let currentTargetIndex = startIndex;
+
+        // Visual setup for dragged item
+        itemEl.classList.add("dragging");
+        itemEl.style.zIndex = "1000";
+        itemEl.style.position = "relative";
+        itemEl.style.transition = "box-shadow 0.2s ease, opacity 0.2s ease";
+
+        // Setup transitions on all OTHER items so they glide smoothly
+        allItems.forEach((el, idx) => {
+          if (idx !== startIndex) {
+            el.style.transition = "transform 0.2s cubic-bezier(0.2, 0, 0, 1)";
+          }
+        });
+
+        // Set pointer capture on handle
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch (err) {}
 
         const onPointerMove = (moveEvt) => {
-          if (!activeItem) return;
-          const currentY = moveEvt.clientY;
+          moveEvt.preventDefault();
+          const deltaY = moveEvt.clientY - startClientY;
 
-          const items = [...container.querySelectorAll(".qf-item:not(.dragging)")];
-          const nextItem = items.find((item) => {
-            const rect = item.getBoundingClientRect();
-            return currentY < rect.top + rect.height / 2;
-          });
+          // Dragged item follows the finger directly with GPU transform
+          itemEl.style.transform = `translateY(${deltaY}px) scale(1.02)`;
 
-          if (nextItem) {
-            container.insertBefore(activeItem, nextItem);
-          } else {
-            container.appendChild(activeItem);
+          // Current midpoint of the dragged item
+          const draggedMidY = initialRects[startIndex].top + initialRects[startIndex].height / 2 + deltaY;
+
+          // Determine target index by comparing against initial midpoints
+          let newTarget = startIndex;
+          for (let i = 0; i < allItems.length; i++) {
+            if (i === startIndex) continue;
+            const mid = initialRects[i].top + initialRects[i].height / 2;
+            if (i < startIndex && draggedMidY < mid) {
+              newTarget = Math.min(newTarget, i);
+            } else if (i > startIndex && draggedMidY > mid) {
+              newTarget = Math.max(newTarget, i);
+            }
+          }
+
+          if (newTarget !== currentTargetIndex) {
+            haptic(10);
+            currentTargetIndex = newTarget;
+
+            // Shift other items to visually make room for dragged item
+            allItems.forEach((el, i) => {
+              if (i === startIndex) return;
+              if (startIndex < currentTargetIndex) {
+                // Dragging downwards: items between startIndex and currentTargetIndex shift UP
+                if (i > startIndex && i <= currentTargetIndex) {
+                  el.style.transform = `translateY(-${itemStep}px)`;
+                } else {
+                  el.style.transform = "translateY(0px)";
+                }
+              } else {
+                // Dragging upwards: items between currentTargetIndex and startIndex shift DOWN
+                if (i >= currentTargetIndex && i < startIndex) {
+                  el.style.transform = `translateY(${itemStep}px)`;
+                } else {
+                  el.style.transform = "translateY(0px)";
+                }
+              }
+            });
           }
         };
 
-        const onPointerUp = (upEvt) => {
-          if (!activeItem) return;
-          activeItem.classList.remove("dragging");
-          handle.releasePointerCapture(upEvt.pointerId);
+        const onPointerEnd = (endEvt) => {
+          try {
+            handle.releasePointerCapture(endEvt.pointerId);
+          } catch (err) {}
 
-          handle.removeEventListener("pointermove", onPointerMove);
-          handle.removeEventListener("pointerup", onPointerUp);
-          handle.removeEventListener("pointercancel", onPointerUp);
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", onPointerEnd);
+          window.removeEventListener("pointercancel", onPointerEnd);
 
-          // Save new order to localStorage
-          const newOrderIds = [...container.querySelectorAll(".qf-item")].map((el) => el.dataset.id);
-          const currentOptions = getQuickFillOptions();
-          const reordered = newOrderIds
-            .map((id) => currentOptions.find((o) => o.id === id))
-            .filter(Boolean);
+          // Clean up all inline styles
+          allItems.forEach((el) => {
+            el.style.transform = "";
+            el.style.transition = "";
+            el.style.zIndex = "";
+            el.style.position = "";
+          });
+          itemEl.classList.remove("dragging");
 
-          saveQuickFillOptions(reordered);
-          haptic(12);
-          activeItem = null;
+          // Commit reordered array to state and localStorage if changed
+          if (currentTargetIndex !== startIndex) {
+            const options = getQuickFillOptions();
+            const [moved] = options.splice(startIndex, 1);
+            options.splice(currentTargetIndex, 0, moved);
+            saveQuickFillOptions(options);
+            haptic(15);
+            renderQuickFillSettingsList();
+          }
         };
 
-        handle.addEventListener("pointermove", onPointerMove);
-        handle.addEventListener("pointerup", onPointerUp);
-        handle.addEventListener("pointercancel", onPointerUp);
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", onPointerEnd);
+        window.addEventListener("pointercancel", onPointerEnd);
       });
     });
   }

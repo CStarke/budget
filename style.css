@@ -1114,11 +1114,15 @@ body {
 .qf-sortable-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 16px 0;
-  max-height: 50vh;
+  gap: 10px;
+  margin: 12px 0 16px 0;
+  max-height: 52vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 6px;
+  box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .qf-item {
@@ -1128,7 +1132,9 @@ body {
   background: rgba(30, 41, 59, 0.7);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 10px 12px;
+  padding: 10px 14px;
+  width: 100%;
+  box-sizing: border-box;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -1136,23 +1142,25 @@ body {
 }
 
 .qf-item.dragging {
-  opacity: 0.75;
-  background: rgba(16, 185, 129, 0.15);
+  opacity: 0.95;
+  background: rgba(30, 41, 59, 0.95);
   border-color: var(--accent-emerald);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  transform: scale(1.02);
-  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 1000 !important;
 }
 
 .qf-drag-handle {
   cursor: grab;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  margin-left: -4px;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .qf-drag-handle:active {
   cursor: grabbing;
