@@ -1621,6 +1621,7 @@
     elements.btnWheelReset.addEventListener("click", (e) => {
       e.stopPropagation();
       haptic(15);
+      elements.btnWheelReset.blur();
       resetWheelToBlank();
       elements.descInput.focus();
     });
@@ -1942,7 +1943,9 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.quickFillEditorModal.classList.add("open");
-    setTimeout(() => elements.qfTitleInput.focus(), 200);
+    if (!opt) {
+      setTimeout(() => elements.qfTitleInput.focus(), 200);
+    }
   }
 
   function closeQuickFillEditor() {
