@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v56";
+  const APP_VERSION = "v57";
 
   // State
   const state = {
@@ -1345,15 +1345,6 @@
   }
   if (elements.settingsVersion) {
     elements.settingsVersion.textContent = APP_VERSION;
-    elements.settingsVersion.addEventListener("click", () => {
-      haptic(15);
-      showToast(`Budget App ${APP_VERSION}`, "info");
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistration().then((reg) => {
-          if (reg) reg.update();
-        });
-      }
-    });
   }
   elements.btnSyncNow.addEventListener("click", () => syncOptions(true));
   if (elements.btnSyncQueueNow) {
