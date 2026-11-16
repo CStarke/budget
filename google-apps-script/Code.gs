@@ -55,30 +55,64 @@ function getCategorySheet() {
 }
 
 /**
- * Reads options directly from the Category tab (Col A: Category, Col B: From, Col C: To).
+ * Reads options from the Category tab by finding columns titled "Category", "From", and "To" in Row 1.
+ * Filters out "Total spent" from categories.
  */
 function getOptionsFromCategoryTab(categorySheet) {
   if (!categorySheet) return { category: [], from: [], to: [] };
+  var lastCol = categorySheet.getLastColumn();
   var lastRow = categorySheet.getLastRow();
-  if (lastRow < CONFIG.START_ROW) {
+  if (lastCol < 1 || lastRow < CONFIG.START_ROW) {
     return { category: [], from: [], to: [] };
   }
-  
-  var values = categorySheet.getRange(CONFIG.START_ROW, 1, lastRow - CONFIG.START_ROW + 1, 3).getValues();
-  var cat = [], from = [], to = [];
-  var seenCat = {}, seenFrom = {}, seenTo = {};
 
-  for (var r = 0; r < values.length; r++) {
-    var cVal = values[r][0] !== null && values[r][0] !== undefined ? String(values[r][0]).trim() : "";
-    var fVal = values[r][1] !== null && values[r][1] !== undefined ? String(values[r][1]).trim() : "";
-    var tVal = values[r][2] !== null && values[r][2] !== undefined ? String(values[r][2]).trim() : "";
+  // Read Row 1 headers to locate Category, From, and To columns
+  var headers = categorySheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var catCol = -1;
+  var fromCol = -1;
+  var toCol = -1;
 
-    if (cVal && !seenCat[cVal]) { seenCat[cVal] = true; cat.push(cVal); }
-    if (fVal && !seenFrom[fVal]) { seenFrom[fVal] = true; from.push(fVal); }
-    if (tVal && !seenTo[tVal]) { seenTo[tVal] = true; to.push(tVal); }
+  for (var c = 0; c < headers.length; c++) {
+    var headerText = String(headers[c] || "").trim().toLowerCase();
+    if (!headerText) continue;
+
+    if (headerText === "category" || headerText === "categories" || headerText.indexOf("cat") === 0) {
+      catCol = c + 1;
+    } else if (headerText === "from" || headerText.indexOf("source") !== -1 || headerText.indexOf("account") !== -1) {
+      fromCol = c + 1;
+    } else if (headerText === "to" || headerText.indexOf("dest") !== -1 || headerText.indexOf("payee") !== -1) {
+      toCol = c + 1;
+    }
   }
 
-  return { category: cat, from: from, to: to };
+  function extractColumnValues(colIndex, isCategory) {
+    if (colIndex === -1) return [];
+    var values = categorySheet.getRange(CONFIG.START_ROW, colIndex, lastRow - CONFIG.START_ROW + 1, 1).getValues();
+    var list = [];
+    var seen = {};
+    for (var r = 0; r < values.length; r++) {
+      var val = values[r][0];
+      if (val !== null && val !== undefined) {
+        var str = String(val).trim();
+        if (str.length > 0) {
+          if (isCategory && (str.toLowerCase() === "total spent" || str.toLowerCase().indexOf("total spent") === 0)) {
+            continue;
+          }
+          if (!seen[str]) {
+            seen[str] = true;
+            list.push(str);
+          }
+        }
+      }
+    }
+    return list;
+  }
+
+  return {
+    category: extractColumnValues(catCol, true),
+    from: extractColumnValues(fromCol, false),
+    to: extractColumnValues(toCol, false)
+  };
 }
 
 /**
