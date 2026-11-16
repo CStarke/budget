@@ -671,66 +671,59 @@
     isSyncingQueue = true;
     updateStatus("syncing", `Syncing queue (${queue.length})...`);
 
-    let syncedCount = 0;
-    let hadUndo = false;
-    while (queue.length > 0) {
-      const item = queue[0];
-      const isUndo = item.action === "undo";
-      const payload = isUndo ? {
-        action: "undo",
+    const batchItems = [...queue];
+    const payload = {
+      action: "batch",
+      transactions: batchItems.map((item) => ({
+        action: item.action || "add",
         date: item.date,
         description: item.description,
         category: item.category,
         from: item.from,
         to: item.to,
         amount: item.amount
-      } : {
-        date: item.date,
-        description: item.description,
-        category: item.category,
-        from: item.from,
-        to: item.to,
-        amount: item.amount
-      };
+      }))
+    };
 
-      try {
-        await fetch(state.scriptUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
-          body: JSON.stringify(payload)
-        });
+    try {
+      await fetch(state.scriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+      });
 
-        // Sent successfully, remove from queue
-        queue.shift();
-        saveOfflineQueue(queue);
-        syncedCount++;
-        if (isUndo) hadUndo = true;
-        updateQueueUI();
-      } catch (err) {
-        console.warn("Queue sync paused:", err);
-        break;
-      }
-    }
+      // Safely remove only the items that were included in this batch
+      const currentQueue = getOfflineQueue();
+      const batchIds = new Set(batchItems.map((it) => it.id));
+      const remainingQueue = currentQueue.filter((it) => !batchIds.has(it.id));
+      saveOfflineQueue(remainingQueue);
 
-    isSyncingQueue = false;
-    updateQueueUI();
+      const syncedCount = batchItems.length;
+      isSyncingQueue = false;
+      updateQueueUI();
 
-    const remaining = queue.length;
-    if (syncedCount > 0) {
       haptic([25, 50, 25]);
-      showToast(`Synced ${syncedCount} offline change${syncedCount === 1 ? "" : "s"} to ${state.sheetName || "Sheet"}!`, "success");
-      if (hadUndo) {
-        fetchRecentTransactionsFromSheet();
-      }
-    }
+      showToast(`Synced ${syncedCount} pending change${syncedCount === 1 ? "" : "s"} to ${state.sheetName || "Sheet"}!`, "success");
 
-    if (remaining === 0) {
-      updateStatus("online", `Connected: ${state.sheetName || "Sheet"}`);
-    } else {
-      updateStatus("", `${remaining} pending sync`);
+      fetchRecentTransactionsFromSheet();
+
+      if (remainingQueue.length === 0) {
+        updateStatus("online", `Connected: ${state.sheetName || "Sheet"}`);
+      } else {
+        updateStatus("", `${remainingQueue.length} pending sync`);
+        processOfflineQueue();
+      }
+    } catch (err) {
+      console.warn("Batch queue sync failed, will retry:", err);
+      isSyncingQueue = false;
+      updateQueueUI();
+      if (showNotification) {
+        showToast("Could not sync queue. Check connection.", "error");
+      }
+      updateStatus("", `${queue.length} pending sync`);
     }
   }
 
@@ -1073,6 +1066,17 @@
       haptic(15);
       showToast(`Saved offline (${pendingCount} pending). Will sync when online.`, "success");
       resetFormFields();
+      return;
+    }
+
+    // If there are already pending items in queue, queue this item too so all items sync in strict chronological order
+    if (getOfflineQueue().length > 0) {
+      const pendingCount = enqueueTransaction(payload);
+      addRecentTransaction(payload);
+      haptic(15);
+      showToast(`Queued (${pendingCount} pending). Syncing batch...`, "info");
+      resetFormFields();
+      processOfflineQueue();
       return;
     }
 

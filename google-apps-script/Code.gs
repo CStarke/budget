@@ -1,10 +1,12 @@
 /**
- * Budget Helper - Google Apps Script Backend (v8 - Formula-Safe Undo & Live Sheet Recent Transactions)
+ * Budget Helper - Google Apps Script Backend (v9 - Batch Pending Transactions Support)
  * 
  * Automatically connects your "Budget" mobile app to your Google Sheets table.
  * - Dynamically scans the "Category" tab's first row to find columns by name ("Category", "From", "To").
  * - You can add, reorder, or insert columns at any time without breaking anything.
  * - Appends transactions to "Budget {Current Year}" without overwriting manual rows.
+ * - High-Speed Batch Processing: Appends queued offline transactions in a single atomic operation
+ *   using multi-row range setValues for instant bulk syncing.
  * - Formula-Safe Undo: Clears transaction columns (A-F) without deleting sheet rows,
  *   preserving adjacent calculation formulas (columns G+) and preventing #REF! errors.
  * - Reads and syncs the live last 5 transactions directly from the sheet.
@@ -496,6 +498,114 @@ function deleteLastMatchingTransaction(data) {
 }
 
 /**
+ * Processes a batch of queued transactions and undo actions in a single atomic operation.
+ * Appends multiple rows using high-speed 2D range setValues to avoid individual row lag.
+ */
+function batchProcessTransactions(data) {
+  var items = [];
+  if (Array.isArray(data)) {
+    items = data;
+  } else if (data && Array.isArray(data.transactions)) {
+    items = data.transactions;
+  } else if (data && Array.isArray(data.items)) {
+    items = data.items;
+  }
+  
+  if (!items || items.length === 0) {
+    return { success: true, count: 0, message: "No items in batch." };
+  }
+
+  var processedCount = 0;
+  var addsBySheet = {}; // sName -> { sheet, colMap, rows }
+
+  function flushAddsForSheet(sheetInfo) {
+    if (!sheetInfo || !sheetInfo.rows || sheetInfo.rows.length === 0) return;
+    var sheet = sheetInfo.sheet;
+    var colMap = sheetInfo.colMap;
+    var rows = sheetInfo.rows;
+    var targetRow = findNextAvailableRow(sheet, colMap);
+    var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+    
+    var matrix = [];
+    for (var r = 0; r < rows.length; r++) {
+      var row = new Array(maxCol);
+      for (var c = 0; c < maxCol; c++) row[c] = "";
+      var it = rows[r];
+      row[colMap.DATE - 1] = it.dateVal;
+      row[colMap.DESCRIPTION - 1] = it.descVal;
+      row[colMap.CATEGORY - 1] = it.catVal;
+      row[colMap.FROM - 1] = it.fromVal;
+      row[colMap.TO - 1] = it.toVal;
+      row[colMap.AMOUNT - 1] = it.amountVal;
+      matrix.push(row);
+    }
+    
+    sheet.getRange(targetRow, 1, matrix.length, maxCol).setValues(matrix);
+    sheet.getRange(targetRow, colMap.DATE, matrix.length, 1).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(targetRow, colMap.AMOUNT, matrix.length, 1).setNumberFormat("$#,##0.00");
+    sheetInfo.rows = [];
+  }
+
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var isUndo = it.action === "undo" || it.action === "delete";
+    
+    if (isUndo) {
+      // Flush any queued adds before performing undo to maintain ordering
+      for (var sName in addsBySheet) {
+        flushAddsForSheet(addsBySheet[sName]);
+      }
+      deleteLastMatchingTransaction(it);
+      processedCount++;
+    } else {
+      var sheet = getTargetSheet(it.date);
+      var sheetName = sheet.getName();
+      if (!addsBySheet[sheetName]) {
+        addsBySheet[sheetName] = {
+          sheet: sheet,
+          colMap: detectColumns(sheet),
+          rows: []
+        };
+      }
+      
+      var dateVal = parseDateInput(it.date);
+      var descVal = it.description ? String(it.description).trim() : "";
+      var catVal = it.category ? String(it.category).trim() : "";
+      var fromVal = it.from ? String(it.from).trim() : "";
+      var toVal = it.to ? String(it.to).trim() : "";
+      var amountVal = parseFloat(it.amount);
+      if (isNaN(amountVal)) amountVal = 0.00;
+
+      addsBySheet[sheetName].rows.push({
+        dateVal: dateVal,
+        descVal: descVal,
+        catVal: catVal,
+        fromVal: fromVal,
+        toVal: toVal,
+        amountVal: amountVal
+      });
+      processedCount++;
+    }
+  }
+
+  // Flush remaining adds across all sheets
+  for (var sName in addsBySheet) {
+    flushAddsForSheet(addsBySheet[sName]);
+  }
+
+  SpreadsheetApp.flush();
+
+  var primarySheet = getTargetSheet();
+  var primaryColMap = detectColumns(primarySheet);
+  return {
+    success: true,
+    processedCount: processedCount,
+    message: "Processed " + processedCount + " transactions in batch.",
+    recentTransactions: getRecentTransactionsFromSheet(primarySheet, primaryColMap, 5)
+  };
+}
+
+/**
  * POST endpoint.
  */
 function doPost(e) {
@@ -514,6 +624,14 @@ function doPost(e) {
     if (!data) throw new Error("No data received in request.");
 
     var action = data.action ? String(data.action).trim().toLowerCase() : "";
+    
+    // Batch processing of queued offline transactions
+    if (action === "batch" || Array.isArray(data.transactions) || Array.isArray(data.items)) {
+      var batchResponse = batchProcessTransactions(data);
+      return ContentService.createTextOutput(JSON.stringify(batchResponse))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === "undo" || action === "delete") {
       var undoResponse = deleteLastMatchingTransaction(data);
       return ContentService.createTextOutput(JSON.stringify(undoResponse))
