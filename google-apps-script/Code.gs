@@ -386,6 +386,9 @@ function getRecentTransactionsFromSheet(sheet, colMap, limit) {
       var trailingRow = startRow + checkRows.length;
       var rowsToClear = lastPopRow - trailingRow + 1;
       sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+      for (var k = 0; k < rowsToClear; k++) {
+        try { sheet.deleteRow(trailingRow); } catch (e) {}
+      }
       SpreadsheetApp.flush();
       numRows = checkRows.length;
     }
@@ -881,6 +884,9 @@ function removeTrailingDuplicates() {
     var trailingRow = startRow + allRows.length;
     var rowsToClear = lastPopRow - trailingRow + 1;
     sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+    for (var r = 0; r < rowsToClear; r++) {
+      try { sheet.deleteRow(trailingRow); } catch (e) {}
+    }
     SpreadsheetApp.flush();
     return "Removed " + (origLen - allRows.length) + " trailing duplicate row(s). Only 1 Isaiah remains.";
   }
@@ -971,10 +977,13 @@ function deleteLastMatchingTransaction(data) {
     sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
   }
 
-  // 4. Clear all trailing rows (including previous duplicate rows)
+  // 4. Clear and physically delete all trailing rows (including previous duplicate rows)
   var trailingRow = startRow + allRows.length;
   var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
   sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+  for (var d = 0; d < rowsToClear; d++) {
+    try { sheet.deleteRow(trailingRow); } catch (e) {}
+  }
   
   SpreadsheetApp.flush();
   var updatedRecent = getRecentTransactionsFromSheet(sheet, colMap, 5);
