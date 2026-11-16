@@ -860,7 +860,7 @@ function cleanTrailingDuplicates(allRows, colMap, tz) {
 
 /**
  * Run this function directly from the Google Apps Script editor (select 'removeTrailingDuplicates'
- * and click 'Run') to immediately remove any duplicate trailing rows (leaving only 1 Isaiah).
+ * and click 'Run') to immediately remove any duplicate trailing rows.
  */
 function removeTrailingDuplicates() {
   var sheet = getTargetSheet();
@@ -888,7 +888,7 @@ function removeTrailingDuplicates() {
       try { sheet.deleteRow(trailingRow); } catch (e) {}
     }
     SpreadsheetApp.flush();
-    return "Removed " + (origLen - allRows.length) + " trailing duplicate row(s). Only 1 Isaiah remains.";
+    return "Removed " + (origLen - allRows.length) + " trailing duplicate row(s).";
   }
   return "No trailing duplicate rows found.";
 }
