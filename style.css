@@ -331,13 +331,6 @@ html, body {
   color: var(--text-muted);
 }
 
-/* Required Indicator */
-.required-indicator {
-  color: var(--accent-emerald);
-  font-weight: 700;
-  margin-left: 2px;
-}
-
 /* Horizontal 3-Button Category Row */
 .category-grid {
   display: flex;
@@ -668,25 +661,6 @@ html, body {
 
 .btn-undo-header:active {
   transform: scale(0.94);
-  background: rgba(239, 68, 68, 0.35);
-  color: #ffffff;
-}
-
-.btn-undo-recent {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #f87171;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-undo-recent:active {
-  transform: scale(0.92);
   background: rgba(239, 68, 68, 0.35);
   color: #ffffff;
 }
@@ -1102,15 +1076,6 @@ html, body {
   color: var(--text-muted);
   font-size: 12.5px;
   font-weight: 500;
-}
-.wheel-slot.hidden-slot {
-  opacity: 0;
-  transform: rotateX(80deg) translateZ(0) scale(0.6);
-}
-
-/* Floating wheel has no bounding vignettes or indicator bars */
-.wheel-vignette-top, .wheel-vignette-bottom, .wheel-center-indicator {
-  display: none !important;
 }
 
 /* ==========================================================================

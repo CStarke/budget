@@ -53,9 +53,7 @@
     defaultToBtnText: document.getElementById("defaultToBtnText"),
     pickerOverlay: document.getElementById("pickerOverlay"),
     pickerBackdrop: document.getElementById("pickerBackdrop"),
-    pickerTitle: document.getElementById("pickerTitle"),
     pickerList: document.getElementById("pickerList"),
-    pickerCancelBtn: document.getElementById("pickerCancelBtn"),
     btnSubmit: document.getElementById("btnSubmit"),
     btnSubmitText: document.getElementById("btnSubmitText"),
     toast: document.getElementById("toast"),
@@ -77,7 +75,6 @@
     btnUndoRecent: document.getElementById("btnUndoRecent"),
     recentList: document.getElementById("recentList"),
     descSplitContainer: document.getElementById("descSplitContainer"),
-    descInputWrapper: document.getElementById("descInputWrapper"),
     quickWheelWrapper: document.getElementById("quickWheelWrapper"),
     wheelCylinder: document.getElementById("wheelCylinder"),
     btnWheelReset: document.getElementById("btnWheelReset"),
@@ -227,7 +224,7 @@
   }
 
   // Update Selector Button Display
-  function updateButtonDisplay(textElem, buttonElem, value) {
+  function updateButtonDisplay(textElem, buttonElem, value, placeholder = "Select one") {
     if (!textElem || !buttonElem) return;
     if (value && String(value).trim().length > 0) {
       textElem.textContent = value;
@@ -235,7 +232,7 @@
       buttonElem.classList.add("has-value");
       buttonElem.classList.add("active");
     } else {
-      textElem.textContent = "Select one";
+      textElem.textContent = placeholder;
       textElem.className = "pill-text placeholder";
       buttonElem.classList.remove("has-value");
       buttonElem.classList.remove("active");
@@ -295,10 +292,6 @@
       if (!currentValue) {
         currentValue = "(None)";
       }
-    }
-
-    if (elements.pickerTitle) {
-      elements.pickerTitle.textContent = "";
     }
 
     if (!items || items.length === 0) {
@@ -554,19 +547,18 @@
     return `${formattedDollars}.${centPart}`;
   }
 
-  // Handle ATM-style cent-shifting input (e.g. 4 -> 0.04, 50 -> 0.50, 12856 -> 128.56, 128567 -> 1,285.67)
-  function handleAmountInput() {
-    const rawDigits = elements.amountInput.value.replace(/\D/g, "");
+  // Parse and clamp raw input digits into valid integer cents (max $999,999.99)
+  function parseAtmCents(rawStr) {
+    const rawDigits = String(rawStr || "").replace(/\D/g, "");
     let cents = parseInt(rawDigits, 10);
     if (isNaN(cents)) cents = 0;
+    return Math.min(cents, 99999999);
+  }
 
-    // Max limit $999,999.99
-    if (cents > 99999999) {
-      cents = 99999999;
-    }
-
-    currentCents = cents;
-    elements.amountInput.value = formatCentsWithCommas(cents);
+  // Handle ATM-style cent-shifting input (e.g. 4 -> 0.04, 50 -> 0.50, 12856 -> 128.56, 128567 -> 1,285.67)
+  function handleAmountInput() {
+    currentCents = parseAtmCents(elements.amountInput.value);
+    elements.amountInput.value = formatCentsWithCommas(currentCents);
 
     // Keep cursor at the end so typing continues naturally from right to left
     requestAnimationFrame(() => {
@@ -1224,9 +1216,6 @@
         closePicker();
       }
     });
-  }
-  if (elements.pickerCancelBtn) {
-    elements.pickerCancelBtn.addEventListener("click", closePicker);
   }
 
   // Tap Logo to Force App Update & Refresh
@@ -1913,12 +1902,8 @@
   let qfEditorCents = 0;
 
   function handleQfAmountInput() {
-    const rawDigits = elements.qfAmountInput.value.replace(/\D/g, "");
-    let cents = parseInt(rawDigits, 10);
-    if (isNaN(cents)) cents = 0;
-    if (cents > 99999999) cents = 99999999;
-    qfEditorCents = cents;
-    elements.qfAmountInput.value = formatCentsWithCommas(cents);
+    qfEditorCents = parseAtmCents(elements.qfAmountInput.value);
+    elements.qfAmountInput.value = formatCentsWithCommas(qfEditorCents);
     requestAnimationFrame(() => {
       elements.qfAmountInput.setSelectionRange(
         elements.qfAmountInput.value.length,
