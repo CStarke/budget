@@ -172,7 +172,8 @@ function detectColumns(sheet) {
     CATEGORY: CONFIG.DEFAULT_COLUMNS.CATEGORY,
     FROM: CONFIG.DEFAULT_COLUMNS.FROM,
     TO: CONFIG.DEFAULT_COLUMNS.TO,
-    AMOUNT: CONFIG.DEFAULT_COLUMNS.AMOUNT
+    AMOUNT: CONFIG.DEFAULT_COLUMNS.AMOUNT,
+    maxCol: 6
   };
   
   if (maxScanRows < 1 || maxCols < 1) return colMap;
@@ -195,7 +196,10 @@ function detectColumns(sheet) {
       else if (val.indexOf("cat") !== -1) { tempMap.CATEGORY = c + 1; foundCount++; }
       else if (val === "from" || val.indexOf("source") !== -1 || val.indexOf("account") !== -1) { tempMap.FROM = c + 1; foundCount++; }
       else if (val === "to" || val.indexOf("dest") !== -1 || val.indexOf("payee") !== -1) { tempMap.TO = c + 1; foundCount++; }
-      else if (val.indexOf("amount") !== -1 || val.indexOf("price") !== -1 || val === "cost" || val === "spent") { tempMap.AMOUNT = c + 1; foundCount++; }
+      else if (val.indexOf("amount") !== -1 || val.indexOf("price") !== -1 || val === "cost" || val === "spent") { 
+        // Do NOT match "total" here because running balance / net worth total is column 12
+        tempMap.AMOUNT = c + 1; foundCount++; 
+      }
     }
     
     if (foundCount >= 3) {
@@ -206,6 +210,7 @@ function detectColumns(sheet) {
       if (tempMap.FROM) colMap.FROM = tempMap.FROM;
       if (tempMap.TO) colMap.TO = tempMap.TO;
       if (tempMap.AMOUNT) colMap.AMOUNT = tempMap.AMOUNT;
+      colMap.maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
       break;
     }
   }
@@ -215,6 +220,8 @@ function detectColumns(sheet) {
 
 /**
  * Finds the next truly empty row in the table (never overwriting existing data).
+ * Scans only the transaction columns (A-F) so that running balance formula columns
+ * extending down the sheet do not inflate the next row calculation.
  */
 function findNextAvailableRow(sheet, colMap) {
   var lastRow = sheet.getLastRow();
@@ -224,13 +231,13 @@ function findNextAvailableRow(sheet, colMap) {
     return startRow;
   }
   
-  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT);
+  var maxCol = colMap.maxCol || 6;
   var values = sheet.getRange(startRow, 1, lastRow - startRow + 1, maxCol).getValues();
   
   var lastPopulatedRow = startRow - 1;
   for (var r = values.length - 1; r >= 0; r--) {
     var hasContent = values[r].some(function(cell) {
-      return cell !== "" && cell !== null && cell !== undefined;
+      return String(cell !== null && cell !== undefined ? cell : "").trim() !== "";
     });
     if (hasContent) {
       lastPopulatedRow = startRow + r;
@@ -242,13 +249,40 @@ function findNextAvailableRow(sheet, colMap) {
 }
 
 /**
- * Normalizes any Date or date string to a midnight timestamp (date-only comparison).
+ * Formats a Date or date string to YYYY-MM-DD using spreadsheet timezone.
  */
-function normalizeDateOnly(dateVal) {
-  if (!dateVal) return 0;
-  var dt = (dateVal instanceof Date) ? dateVal : parseDateInput(dateVal);
-  if (isNaN(dt.getTime())) return 0;
-  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+function formatComparableDate(val, tz) {
+  if (!val) return "";
+  if (typeof val === "string") {
+    var m = val.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) {
+      var y = m[1];
+      var mon = String(m[2]).length === 1 ? "0" + m[2] : m[2];
+      var d = String(m[3]).length === 1 ? "0" + m[3] : m[3];
+      return y + "-" + mon + "-" + d;
+    }
+  }
+  var dt = (val instanceof Date) ? val : parseDateInput(val);
+  if (isNaN(dt.getTime())) return "";
+  if (tz && typeof Utilities !== "undefined" && Utilities.formatDate) {
+    return Utilities.formatDate(dt, tz, "yyyy-MM-dd");
+  }
+  var yr = dt.getFullYear();
+  var mo = String(dt.getMonth() + 1);
+  if (mo.length === 1) mo = "0" + mo;
+  var dy = String(dt.getDate());
+  if (dy.length === 1) dy = "0" + dy;
+  return yr + "-" + mo + "-" + dy;
+}
+
+/**
+ * Normalizes any Date or date string to a UTC midnight timestamp (date-only comparison).
+ */
+function normalizeDateOnly(dateVal, tz) {
+  var str = formatComparableDate(dateVal, tz);
+  if (!str) return 0;
+  var p = str.split("-");
+  return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)).getTime();
 }
 
 /**
@@ -268,7 +302,8 @@ function findChronologicalInsertionRow(sheet, colMap, targetDateVal) {
     return startRow;
   }
 
-  var targetTime = normalizeDateOnly(targetDateVal);
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
+  var targetTime = normalizeDateOnly(targetDateVal, tz);
   if (targetTime <= 0) return nextRow;
 
   var numRows = lastPopulatedRow - startRow + 1;
@@ -277,7 +312,7 @@ function findChronologicalInsertionRow(sheet, colMap, targetDateVal) {
   for (var i = 0; i < dateValues.length; i++) {
     var cellDate = dateValues[i][0];
     if (cellDate) {
-      var cellTime = normalizeDateOnly(cellDate);
+      var cellTime = normalizeDateOnly(cellDate, tz);
       if (cellTime > targetTime) {
         return startRow + i; // 1-based row index
       }
@@ -293,7 +328,7 @@ function findChronologicalInsertionRow(sheet, colMap, targetDateVal) {
  * preserving all formula columns in columns G+ and preventing #REF! errors.
  */
 function writeTransactionAtRow(sheet, colMap, targetRow, nextRow, dateVal, descVal, catVal, fromVal, toVal, amountVal) {
-  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+  var maxCol = colMap.maxCol || 6;
 
   // If inserting before existing rows, shift columns 1..maxCol down by 1
   if (targetRow < nextRow) {
@@ -336,17 +371,18 @@ function getRecentTransactionsFromSheet(sheet, colMap, limit) {
   
   var startRow = headerRow + 1;
   var numRows = lastRow - headerRow;
-  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+  var maxCol = colMap.maxCol || 6;
   var values = sheet.getRange(startRow, 1, numRows, maxCol).getValues();
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
   
   var list = [];
   // Loop from the very bottom row upwards
   for (var i = values.length - 1; i >= 0; i--) {
     var rowValues = values[i];
     
-    // Check if row has any non-empty cell
+    // Check if row has any non-empty cell in columns A-F
     var hasContent = rowValues.some(function(cell) {
-      return cell !== "" && cell !== null && cell !== undefined;
+      return String(cell !== null && cell !== undefined ? cell : "").trim() !== "";
     });
     if (!hasContent) {
       continue;
@@ -365,9 +401,9 @@ function getRecentTransactionsFromSheet(sheet, colMap, limit) {
     
     var dateStr = "";
     if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
-      dateStr = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || "GMT", "yyyy-MM-dd");
+      dateStr = Utilities.formatDate(rawDate, tz, "yyyy-MM-dd");
     } else if (rawDate) {
-      dateStr = String(rawDate).trim();
+      dateStr = formatComparableDate(rawDate, tz);
     }
     
     var rowNumber = startRow + i;
@@ -504,7 +540,8 @@ function editTransaction(data) {
   var colMap = detectColumns(sheet);
   var lastRow = sheet.getLastRow();
   var headerRow = colMap.headerRow || 1;
-  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+  var maxCol = colMap.maxCol || 6;
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
 
   if (lastRow <= headerRow) {
     return { success: false, error: "No transactions found in sheet." };
@@ -517,7 +554,7 @@ function editTransaction(data) {
 
   var origDesc = orig.description ? String(orig.description).trim().toLowerCase() : "";
   var origAmt = parseFloat(String(orig.amount || "").replace(/[^0-9.-]/g, ""));
-  var origNormDate = normalizeDateOnly(origDateStr);
+  var origDateComp = formatComparableDate(origDateStr, tz);
 
   // If caller provided data.row or orig.row, test it first
   var hintRow = data.row || orig.row;
@@ -526,23 +563,29 @@ function editTransaction(data) {
     if (idx >= 0 && idx < values.length) {
       var rowDesc = String(values[idx][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
       var rowAmt = parseFloat(String(values[idx][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
-      var rowNormDate = normalizeDateOnly(values[idx][colMap.DATE - 1]);
-      if ((!origDesc || rowDesc === origDesc) && (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01) && (origNormDate === 0 || rowNormDate === origNormDate)) {
+      var rowDateComp = formatComparableDate(values[idx][colMap.DATE - 1], tz);
+      
+      var descMatch = (!origDesc || rowDesc === origDesc || (origDesc === "untitled" && !rowDesc));
+      var amtMatch = (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01);
+      var dateMatch = (!origDateComp || rowDateComp === origDateComp);
+      if (descMatch && amtMatch && dateMatch) {
         targetRow = hintRow;
       }
     }
   }
 
-  // If hint wasn't an exact match, scan backwards from the bottom
+  // If hint wasn't an exact match, scan backwards from the bottom of populated rows
   if (targetRow === -1) {
-    for (var i = values.length - 1; i >= 0; i--) {
+    var nextRowPop = findNextAvailableRow(sheet, colMap);
+    var popIndex = Math.min(values.length - 1, nextRowPop - headerRow - 2);
+    for (var i = popIndex; i >= 0; i--) {
       var rDesc = String(values[i][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
       var rAmt = parseFloat(String(values[i][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
-      var rNormDate = normalizeDateOnly(values[i][colMap.DATE - 1]);
+      var rDateComp = formatComparableDate(values[i][colMap.DATE - 1], tz);
       
       var matchDesc = (!origDesc || rDesc === origDesc || (origDesc === "untitled" && !rDesc));
       var matchAmt = (isNaN(origAmt) || Math.abs(rAmt - origAmt) < 0.01);
-      var matchDate = (origNormDate === 0 || rNormDate === origNormDate);
+      var matchDate = (!origDateComp || rDateComp === origDateComp);
 
       if (matchDesc && matchAmt && matchDate) {
         targetRow = headerRow + 1 + i;
@@ -564,12 +607,12 @@ function editTransaction(data) {
   var newAmountVal = parseFloat(updated.amount);
   if (isNaN(newAmountVal)) newAmountVal = 0.00;
 
-  var newNormDate = normalizeDateOnly(newDateVal);
-  var rowNormDate = normalizeDateOnly(values[targetRow - (headerRow + 1)][colMap.DATE - 1]);
+  var newDateComp = formatComparableDate(newDateVal, tz);
+  var rowDateComp = formatComparableDate(values[targetRow - (headerRow + 1)][colMap.DATE - 1], tz);
 
   // Case 1: Date is UNCHANGED!
   // Stay in the exact same row! Never move or reorder among other transactions on this day.
-  if (newNormDate === rowNormDate) {
+  if (newDateComp === rowDateComp) {
     sheet.getRange(targetRow, colMap.DATE).setValue(newDateVal);
     sheet.getRange(targetRow, colMap.DESCRIPTION).setValue(newDescVal);
     sheet.getRange(targetRow, colMap.CATEGORY).setValue(newCatVal);
@@ -597,14 +640,16 @@ function editTransaction(data) {
   if (newSheet.getName() !== sheet.getName()) {
     // Clear from old sheet and shift rows up to close gap
     var nextRowOld = findNextAvailableRow(sheet, colMap);
-    var shiftUpCount = nextRowOld - targetRow - 1;
-    if (shiftUpCount > 0) {
+    var lastPopOld = nextRowOld - 1;
+    if (targetRow < lastPopOld) {
+      var shiftUpCount = lastPopOld - targetRow;
       var shiftUpVals = sheet.getRange(targetRow + 1, 1, shiftUpCount, maxCol).getValues();
       sheet.getRange(targetRow, 1, shiftUpCount, maxCol).setValues(shiftUpVals);
       sheet.getRange(targetRow, colMap.DATE, shiftUpCount, 1).setNumberFormat("dd mmm yyyy");
       sheet.getRange(targetRow, colMap.AMOUNT, shiftUpCount, 1).setNumberFormat("$#,##0.00");
     }
-    sheet.getRange(nextRowOld - 1, 1, 1, maxCol).clearContent();
+    sheet.getRange(lastPopOld, 1, 1, maxCol).clearContent();
+    SpreadsheetApp.flush();
 
     // Insert into new sheet
     var newColMap = detectColumns(newSheet);
@@ -625,17 +670,21 @@ function editTransaction(data) {
 
   // Same sheet, different day:
   var nextRowCur = findNextAvailableRow(sheet, colMap);
-  var numToShiftUp = nextRowCur - targetRow - 1;
-  if (numToShiftUp > 0) {
+  var lastPopRow = nextRowCur - 1;
+
+  // Step A: Remove targetRow by shifting all rows below it up by 1
+  if (targetRow < lastPopRow) {
+    var numToShiftUp = lastPopRow - targetRow;
     var rowsToShiftUp = sheet.getRange(targetRow + 1, 1, numToShiftUp, maxCol).getValues();
     sheet.getRange(targetRow, 1, numToShiftUp, maxCol).setValues(rowsToShiftUp);
     sheet.getRange(targetRow, colMap.DATE, numToShiftUp, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, colMap.AMOUNT, numToShiftUp, 1).setNumberFormat("$#,##0.00");
   }
-  sheet.getRange(nextRowCur - 1, 1, 1, maxCol).clearContent();
+  sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
+  SpreadsheetApp.flush();
 
-  // Find chronological insertion row in updated sheet state
-  var updatedNextRow = nextRowCur - 1;
+  // Step B: Find chronological insertion row in updated sheet state
+  var updatedNextRow = lastPopRow;
   var destRow = findChronologicalInsertionRow(sheet, colMap, newDateVal);
   writeTransactionAtRow(sheet, colMap, destRow, updatedNextRow, newDateVal, newDescVal, newCatVal, newFromVal, newToVal, newAmountVal);
 
@@ -695,7 +744,7 @@ function deleteLastMatchingTransaction(data) {
   var targetDesc = data.description ? String(data.description).trim().toLowerCase() : "";
   var cleanTargetAmt = String(data.amount !== null && data.amount !== undefined ? data.amount : "").replace(/[^0-9.-]/g, "");
   var targetAmt = parseFloat(cleanTargetAmt);
-  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+  var maxCol = colMap.maxCol || 6;
   
   var numRows = lastRow - headerRow;
   var values = sheet.getRange(headerRow + 1, 1, numRows, maxCol).getValues();
@@ -759,7 +808,7 @@ function batchProcessTransactions(data) {
     var colMap = sheetInfo.colMap;
     var rows = sheetInfo.rows;
     var targetRow = findNextAvailableRow(sheet, colMap);
-    var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+    var maxCol = colMap.maxCol || 6;
     
     var matrix = [];
     for (var r = 0; r < rows.length; r++) {
