@@ -489,6 +489,8 @@ function parseDateInput(inputStr) {
 
 /**
  * Appends transaction to the budget sheet in its exact chronological spot.
+ * Uses atomic in-memory array manipulation and a single setValues call to prevent
+ * row duplication, formula corruption in columns G+, or missing rows.
  */
 function appendTransaction(data) {
   var sheet = getTargetSheet(data ? data.date : null);
@@ -502,10 +504,69 @@ function appendTransaction(data) {
   var amountVal = parseFloat(data.amount);
   if (isNaN(amountVal)) amountVal = 0.00;
   
+  var maxCol = colMap.maxCol || 6;
+  var headerRow = colMap.headerRow || 1;
+  var startRow = headerRow + 1;
   var nextRow = findNextAvailableRow(sheet, colMap);
-  var targetRow = findChronologicalInsertionRow(sheet, colMap, dateVal);
+  var lastPopRow = nextRow - 1;
+  
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
+  var targetTime = normalizeDateOnly(dateVal, tz);
+  
+  var newRow = new Array(maxCol);
+  for (var c = 0; c < maxCol; c++) newRow[c] = "";
+  newRow[colMap.DATE - 1] = dateVal;
+  newRow[colMap.DESCRIPTION - 1] = descVal;
+  newRow[colMap.CATEGORY - 1] = catVal;
+  newRow[colMap.FROM - 1] = fromVal;
+  newRow[colMap.TO - 1] = toVal;
+  newRow[colMap.AMOUNT - 1] = amountVal;
 
-  writeTransactionAtRow(sheet, colMap, targetRow, nextRow, dateVal, descVal, catVal, fromVal, toVal, amountVal);
+  var targetRow = nextRow;
+
+  if (lastPopRow < startRow) {
+    sheet.getRange(startRow, 1, 1, maxCol).setValues([newRow]);
+    sheet.getRange(startRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(startRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
+    targetRow = startRow;
+  } else {
+    var count = lastPopRow - startRow + 1;
+    var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
+    
+    var insertIndex = allRows.length;
+    if (targetTime > 0) {
+      for (var i = 0; i < allRows.length; i++) {
+        var cellDate = allRows[i][colMap.DATE - 1];
+        if (cellDate) {
+          var cellTime = normalizeDateOnly(cellDate, tz);
+          if (cellTime > targetTime) {
+            insertIndex = i;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (insertIndex === allRows.length) {
+      if (nextRow > sheet.getMaxRows()) {
+        sheet.insertRowsAfter(sheet.getMaxRows(), 50);
+      }
+      sheet.getRange(nextRow, 1, 1, maxCol).setValues([newRow]);
+      sheet.getRange(nextRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
+      sheet.getRange(nextRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
+      targetRow = nextRow;
+    } else {
+      allRows.splice(insertIndex, 0, newRow);
+      if ((startRow + allRows.length - 1) > sheet.getMaxRows()) {
+        sheet.insertRowsAfter(sheet.getMaxRows(), 50);
+      }
+      sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+      sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
+      sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+      targetRow = startRow + insertIndex;
+    }
+  }
+  
   SpreadsheetApp.flush();
 
   return {
@@ -515,7 +576,7 @@ function appendTransaction(data) {
     row: targetRow,
     recentTransactions: getRecentTransactionsFromSheet(sheet, colMap, 5),
     entry: {
-      date: Utilities.formatDate(dateVal, Session.getScriptTimeZone() || "GMT", "dd MMM yyyy"),
+      date: Utilities.formatDate(dateVal, tz, "dd MMM yyyy"),
       description: descVal,
       category: catVal,
       from: fromVal,
@@ -529,7 +590,8 @@ function appendTransaction(data) {
  * Edits an existing transaction in the budget sheet.
  * If the date is unchanged, updates columns A-F strictly in-place, preserving its exact
  * relative order among other transactions on that day.
- * If the date changed to a different day, relocates the transaction to the end of the new day.
+ * If the date changed to a different day, relocates the transaction to the end of the new day
+ * using atomic in-memory array manipulation and a single setValues write to ensure zero data loss.
  */
 function editTransaction(data) {
   var orig = data.original || data;
@@ -540,17 +602,24 @@ function editTransaction(data) {
   var colMap = detectColumns(sheet);
   var lastRow = sheet.getLastRow();
   var headerRow = colMap.headerRow || 1;
+  var startRow = headerRow + 1;
   var maxCol = colMap.maxCol || 6;
   var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
 
-  if (lastRow <= headerRow) {
+  if (lastRow < startRow) {
     return { success: false, error: "No transactions found in sheet." };
+  }
+
+  var nextRowCur = findNextAvailableRow(sheet, colMap);
+  var lastPopRow = nextRowCur - 1;
+  if (lastPopRow < startRow) {
+    return { success: false, error: "No populated transactions found in sheet." };
   }
 
   // 1. Locate the existing row
   var targetRow = -1;
-  var numRows = lastRow - headerRow;
-  var values = sheet.getRange(headerRow + 1, 1, numRows, maxCol).getValues();
+  var count = lastPopRow - startRow + 1;
+  var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
 
   var origDesc = orig.description ? String(orig.description).trim().toLowerCase() : "";
   var origAmt = parseFloat(String(orig.amount || "").replace(/[^0-9.-]/g, ""));
@@ -558,37 +627,33 @@ function editTransaction(data) {
 
   // If caller provided data.row or orig.row, test it first
   var hintRow = data.row || orig.row;
-  if (hintRow && hintRow > headerRow && hintRow <= lastRow) {
-    var idx = hintRow - (headerRow + 1);
-    if (idx >= 0 && idx < values.length) {
-      var rowDesc = String(values[idx][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
-      var rowAmt = parseFloat(String(values[idx][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
-      var rowDateComp = formatComparableDate(values[idx][colMap.DATE - 1], tz);
-      
-      var descMatch = (!origDesc || rowDesc === origDesc || (origDesc === "untitled" && !rowDesc));
-      var amtMatch = (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01);
-      var dateMatch = (!origDateComp || rowDateComp === origDateComp);
-      if (descMatch && amtMatch && dateMatch) {
-        targetRow = hintRow;
-      }
+  if (hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
+    var idx = hintRow - startRow;
+    var rowDesc = String(allRows[idx][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+    var rowAmt = parseFloat(String(allRows[idx][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+    var rowDateComp = formatComparableDate(allRows[idx][colMap.DATE - 1], tz);
+    
+    var descMatch = (!origDesc || rowDesc === origDesc || (origDesc === "untitled" && !rowDesc));
+    var amtMatch = (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01);
+    var dateMatch = (!origDateComp || rowDateComp === origDateComp);
+    if (descMatch && amtMatch && dateMatch) {
+      targetRow = hintRow;
     }
   }
 
   // If hint wasn't an exact match, scan backwards from the bottom of populated rows
   if (targetRow === -1) {
-    var nextRowPop = findNextAvailableRow(sheet, colMap);
-    var popIndex = Math.min(values.length - 1, nextRowPop - headerRow - 2);
-    for (var i = popIndex; i >= 0; i--) {
-      var rDesc = String(values[i][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
-      var rAmt = parseFloat(String(values[i][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
-      var rDateComp = formatComparableDate(values[i][colMap.DATE - 1], tz);
+    for (var i = allRows.length - 1; i >= 0; i--) {
+      var rDesc = String(allRows[i][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+      var rAmt = parseFloat(String(allRows[i][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+      var rDateComp = formatComparableDate(allRows[i][colMap.DATE - 1], tz);
       
       var matchDesc = (!origDesc || rDesc === origDesc || (origDesc === "untitled" && !rDesc));
       var matchAmt = (isNaN(origAmt) || Math.abs(rAmt - origAmt) < 0.01);
       var matchDate = (!origDateComp || rDateComp === origDateComp);
 
       if (matchDesc && matchAmt && matchDate) {
-        targetRow = headerRow + 1 + i;
+        targetRow = startRow + i;
         break;
       }
     }
@@ -608,18 +673,22 @@ function editTransaction(data) {
   if (isNaN(newAmountVal)) newAmountVal = 0.00;
 
   var newDateComp = formatComparableDate(newDateVal, tz);
-  var rowDateComp = formatComparableDate(values[targetRow - (headerRow + 1)][colMap.DATE - 1], tz);
+  var targetIndex = targetRow - startRow;
+  var currentRowDateComp = formatComparableDate(allRows[targetIndex][colMap.DATE - 1], tz);
+
+  var newRowValues = new Array(maxCol);
+  for (var c = 0; c < maxCol; c++) newRowValues[c] = "";
+  newRowValues[colMap.DATE - 1] = newDateVal;
+  newRowValues[colMap.DESCRIPTION - 1] = newDescVal;
+  newRowValues[colMap.CATEGORY - 1] = newCatVal;
+  newRowValues[colMap.FROM - 1] = newFromVal;
+  newRowValues[colMap.TO - 1] = newToVal;
+  newRowValues[colMap.AMOUNT - 1] = newAmountVal;
 
   // Case 1: Date is UNCHANGED!
   // Stay in the exact same row! Never move or reorder among other transactions on this day.
-  if (newDateComp === rowDateComp) {
-    sheet.getRange(targetRow, colMap.DATE).setValue(newDateVal);
-    sheet.getRange(targetRow, colMap.DESCRIPTION).setValue(newDescVal);
-    sheet.getRange(targetRow, colMap.CATEGORY).setValue(newCatVal);
-    sheet.getRange(targetRow, colMap.FROM).setValue(newFromVal);
-    sheet.getRange(targetRow, colMap.TO).setValue(newToVal);
-    sheet.getRange(targetRow, colMap.AMOUNT).setValue(newAmountVal);
-
+  if (newDateComp === currentRowDateComp) {
+    sheet.getRange(targetRow, 1, 1, maxCol).setValues([newRowValues]);
     sheet.getRange(targetRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
 
@@ -639,56 +708,66 @@ function editTransaction(data) {
   var newSheet = getTargetSheet(updated.date);
   if (newSheet.getName() !== sheet.getName()) {
     // Clear from old sheet and shift rows up to close gap
-    var nextRowOld = findNextAvailableRow(sheet, colMap);
-    var lastPopOld = nextRowOld - 1;
-    if (targetRow < lastPopOld) {
-      var shiftUpCount = lastPopOld - targetRow;
-      var shiftUpVals = sheet.getRange(targetRow + 1, 1, shiftUpCount, maxCol).getValues();
-      sheet.getRange(targetRow, 1, shiftUpCount, maxCol).setValues(shiftUpVals);
-      sheet.getRange(targetRow, colMap.DATE, shiftUpCount, 1).setNumberFormat("dd mmm yyyy");
-      sheet.getRange(targetRow, colMap.AMOUNT, shiftUpCount, 1).setNumberFormat("$#,##0.00");
+    allRows.splice(targetIndex, 1);
+    if (allRows.length > 0) {
+      sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+      sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
+      sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
     }
-    sheet.getRange(lastPopOld, 1, 1, maxCol).clearContent();
+    sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
     SpreadsheetApp.flush();
 
     // Insert into new sheet
-    var newColMap = detectColumns(newSheet);
-    var newNextRow = findNextAvailableRow(newSheet, newColMap);
-    var newTargetRow = findChronologicalInsertionRow(newSheet, newColMap, newDateVal);
-    writeTransactionAtRow(newSheet, newColMap, newTargetRow, newNextRow, newDateVal, newDescVal, newCatVal, newFromVal, newToVal, newAmountVal);
+    var addRes = appendTransaction({
+      date: updated.date,
+      description: newDescVal,
+      category: newCatVal,
+      from: newFromVal,
+      to: newToVal,
+      amount: newAmountVal
+    });
 
-    SpreadsheetApp.flush();
     return {
       success: true,
       message: "Transaction moved to " + newSheet.getName(),
       sheetName: newSheet.getName(),
-      row: newTargetRow,
+      row: addRes.row,
       moved: true,
-      recentTransactions: getRecentTransactionsFromSheet(newSheet, newColMap, 5)
+      recentTransactions: getRecentTransactionsFromSheet(newSheet, detectColumns(newSheet), 5)
     };
   }
 
-  // Same sheet, different day:
-  var nextRowCur = findNextAvailableRow(sheet, colMap);
-  var lastPopRow = nextRowCur - 1;
+  // Case 3: Same sheet, different day!
+  // Remove the transaction from its current position
+  allRows.splice(targetIndex, 1);
 
-  // Step A: Remove targetRow by shifting all rows below it up by 1
-  if (targetRow < lastPopRow) {
-    var numToShiftUp = lastPopRow - targetRow;
-    var rowsToShiftUp = sheet.getRange(targetRow + 1, 1, numToShiftUp, maxCol).getValues();
-    sheet.getRange(targetRow, 1, numToShiftUp, maxCol).setValues(rowsToShiftUp);
-    sheet.getRange(targetRow, colMap.DATE, numToShiftUp, 1).setNumberFormat("dd mmm yyyy");
-    sheet.getRange(targetRow, colMap.AMOUNT, numToShiftUp, 1).setNumberFormat("$#,##0.00");
+  // Find the exact chronological insertion index in allRows:
+  // Put it at the END of newDateVal (before any transaction from all subsequent days)
+  var newTargetTime = normalizeDateOnly(newDateVal, tz);
+  var insertIndex = allRows.length;
+  if (newTargetTime > 0) {
+    for (var j = 0; j < allRows.length; j++) {
+      var cellDate = allRows[j][colMap.DATE - 1];
+      if (cellDate) {
+        var cellTime = normalizeDateOnly(cellDate, tz);
+        if (cellTime > newTargetTime) {
+          insertIndex = j;
+          break;
+        }
+      }
+    }
   }
-  sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
+
+  allRows.splice(insertIndex, 0, newRowValues);
+
+  // Write all rows back in a SINGLE atomic operation!
+  // The number of rows is identical to before (count), so no rows are shifted or duplicated!
+  sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+  sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
+  sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
   SpreadsheetApp.flush();
 
-  // Step B: Find chronological insertion row in updated sheet state
-  var updatedNextRow = lastPopRow;
-  var destRow = findChronologicalInsertionRow(sheet, colMap, newDateVal);
-  writeTransactionAtRow(sheet, colMap, destRow, updatedNextRow, newDateVal, newDescVal, newCatVal, newFromVal, newToVal, newAmountVal);
-
-  SpreadsheetApp.flush();
+  var destRow = startRow + insertIndex;
   return {
     success: true,
     message: "Transaction date changed and moved to row " + destRow,
@@ -729,56 +808,94 @@ function doGet(e) {
 
 /**
  * Deletes the most recent matching transaction from the budget sheet.
- * Uses batch range fetch for high performance.
+ * Uses atomic array rewrite if deleting from the middle to close the gap without leaving holes.
  */
 function deleteLastMatchingTransaction(data) {
   var sheet = getTargetSheet(data ? data.date : null);
   var colMap = detectColumns(sheet);
   var lastRow = sheet.getLastRow();
   var headerRow = colMap.headerRow || 1;
+  var startRow = headerRow + 1;
+  var maxCol = colMap.maxCol || 6;
   
   if (lastRow <= headerRow) {
     return { success: false, error: "No transactions found in sheet to undo." };
   }
   
+  var nextRow = findNextAvailableRow(sheet, colMap);
+  var lastPopRow = nextRow - 1;
+  if (lastPopRow < startRow) {
+    return { success: false, error: "No populated transactions found in sheet." };
+  }
+  
   var targetDesc = data.description ? String(data.description).trim().toLowerCase() : "";
   var cleanTargetAmt = String(data.amount !== null && data.amount !== undefined ? data.amount : "").replace(/[^0-9.-]/g, "");
   var targetAmt = parseFloat(cleanTargetAmt);
-  var maxCol = colMap.maxCol || 6;
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
+  var targetDateComp = formatComparableDate(data.date, tz);
+  var hintRow = data.row;
   
-  var numRows = lastRow - headerRow;
-  var values = sheet.getRange(headerRow + 1, 1, numRows, maxCol).getValues();
+  var count = lastPopRow - startRow + 1;
+  var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
   
-  // Search backwards from the most recently appended row
-  for (var i = values.length - 1; i >= 0; i--) {
-    var rowValues = values[i];
-    var descVal = String(rowValues[colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
-    var cleanRowAmt = String(rowValues[colMap.AMOUNT - 1] !== null && rowValues[colMap.AMOUNT - 1] !== undefined ? rowValues[colMap.AMOUNT - 1] : "").replace(/[^0-9.-]/g, "");
-    var amtVal = parseFloat(cleanRowAmt);
-    
-    var matchDesc = (!targetDesc || descVal === targetDesc || (targetDesc === "untitled" && !descVal));
-    var matchAmt = (isNaN(targetAmt) || Math.abs(amtVal - targetAmt) < 0.01);
-    
-    if (matchDesc && matchAmt) {
-      var rowToClear = headerRow + 1 + i;
-      
-      // CRITICAL: Clear only the transaction columns (Columns 1 to maxCol, e.g. A-F).
-      // DO NOT delete the entire row (`deleteRow`), because deleting physical sheet rows
-      // destroys relative cell references in formulas (turning N($G5) into N(#REF!)).
-      // Clearing columns A-F causes `=IF($F6="","",...)` to evaluate cleanly to empty,
-      // preserving calculation formulas in columns G+ intact for subsequent entries.
-      sheet.getRange(rowToClear, 1, 1, maxCol).clearContent();
-      
-      var updatedRecent = getRecentTransactionsFromSheet(sheet, colMap, 5);
-      return { 
-        success: true, 
-        message: "Transaction undone and row cleared.", 
-        clearedRow: rowToClear,
-        recentTransactions: updatedRecent
-      };
+  var deleteIndex = -1;
+  
+  // Check hint row first if provided
+  if (hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
+    var hIdx = hintRow - startRow;
+    var hDesc = String(allRows[hIdx][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+    var hAmt = parseFloat(String(allRows[hIdx][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+    var hDateComp = formatComparableDate(allRows[hIdx][colMap.DATE - 1], tz);
+    if ((!targetDesc || hDesc === targetDesc || (targetDesc === "untitled" && !hDesc)) &&
+        (isNaN(targetAmt) || Math.abs(hAmt - targetAmt) < 0.01) &&
+        (!targetDateComp || hDateComp === targetDateComp)) {
+      deleteIndex = hIdx;
     }
   }
-  return { success: false, error: "Matching transaction not found in sheet." };
+  
+  if (deleteIndex === -1) {
+    for (var i = allRows.length - 1; i >= 0; i--) {
+      var descVal = String(allRows[i][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+      var amtVal = parseFloat(String(allRows[i][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+      var dateComp = formatComparableDate(allRows[i][colMap.DATE - 1], tz);
+      
+      var matchDesc = (!targetDesc || descVal === targetDesc || (targetDesc === "untitled" && !descVal));
+      var matchAmt = (isNaN(targetAmt) || Math.abs(amtVal - targetAmt) < 0.01);
+      var matchDate = (!targetDateComp || dateComp === targetDateComp);
+      
+      if (matchDesc && matchAmt && matchDate) {
+        deleteIndex = i;
+        break;
+      }
+    }
+  }
+  
+  if (deleteIndex === -1) {
+    return { success: false, error: "Matching transaction not found in sheet." };
+  }
+  
+  var clearedRow = startRow + deleteIndex;
+  
+  if (deleteIndex === allRows.length - 1) {
+    // Deleting the very last populated row: just clear it
+    sheet.getRange(clearedRow, 1, 1, maxCol).clearContent();
+  } else {
+    // Deleting from the middle: remove from array, rewrite rows, and clear the single trailing row
+    allRows.splice(deleteIndex, 1);
+    sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+    sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+    sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
+  }
+  
+  SpreadsheetApp.flush();
+  var updatedRecent = getRecentTransactionsFromSheet(sheet, colMap, 5);
+  return { 
+    success: true, 
+    message: "Transaction undone and row cleared.", 
+    clearedRow: clearedRow,
+    recentTransactions: updatedRecent
+  };
 }
 
 /**
