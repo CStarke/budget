@@ -189,7 +189,7 @@ function cleanTrailingDuplicates(allRows, tz) {
  * Retrieves the most recent N transactions from the budget sheet.
  */
 function getRecentTransactionsFromSheet(sheet, limit) {
-  limit = limit || 5;
+  limit = limit || CONFIG.RECENT_LIMIT || 6;
   var lastRow = sheet.getLastRow();
   var startRow = CONFIG.START_ROW;
   if (lastRow < startRow) return [];
@@ -281,7 +281,7 @@ function getFormOptions() {
   var targetSheet = getTargetSheet();
   var catSheet = getCategorySheet();
   var options = getOptionsFromCategoryTab(catSheet);
-  var recentTransactions = getRecentTransactionsFromSheet(targetSheet, 5);
+  var recentTransactions = getRecentTransactionsFromSheet(targetSheet, 6);
   
   return {
     success: true,
@@ -386,7 +386,7 @@ function appendTransaction(data) {
     message: "Transaction added successfully",
     sheetName: sheet.getName(),
     row: targetRow,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 5),
+    recentTransactions: getRecentTransactionsFromSheet(sheet, 6),
     entry: {
       date: Utilities.formatDate(dateVal, tz, "dd MMM yyyy"),
       description: descVal,
@@ -499,7 +499,7 @@ function editTransaction(data) {
       sheetName: sheet.getName(),
       row: targetRow,
       moved: false,
-      recentTransactions: getRecentTransactionsFromSheet(sheet, 5)
+      recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
     };
   }
 
@@ -533,7 +533,7 @@ function editTransaction(data) {
       sheetName: newSheet.getName(),
       row: addRes.row,
       moved: true,
-      recentTransactions: getRecentTransactionsFromSheet(newSheet, 5)
+      recentTransactions: getRecentTransactionsFromSheet(newSheet, 6)
     };
   }
 
@@ -568,7 +568,7 @@ function editTransaction(data) {
     sheetName: sheet.getName(),
     row: destRow,
     moved: true,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 5)
+    recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
   };
 }
 
@@ -662,7 +662,7 @@ function deleteLastMatchingTransaction(data) {
     success: true, 
     message: "Transaction deleted and rows compacted.", 
     clearedRow: clearedRow,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 5)
+    recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
   };
 }
 
@@ -762,7 +762,7 @@ function batchProcessTransactions(data) {
     success: true,
     processedCount: processedCount,
     message: "Processed " + processedCount + " transactions in batch.",
-    recentTransactions: getRecentTransactionsFromSheet(primarySheet, 5)
+    recentTransactions: getRecentTransactionsFromSheet(primarySheet, 6)
   };
 }
 
@@ -774,7 +774,7 @@ function doGet(e) {
     var action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).toLowerCase() : "";
     if (action === "recent" || action === "getrecent") {
       var targetSheet = getTargetSheet(e && e.parameter ? e.parameter.date : null);
-      var recent = getRecentTransactionsFromSheet(targetSheet, 5);
+      var recent = getRecentTransactionsFromSheet(targetSheet, 6);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         sheetName: targetSheet.getName(),

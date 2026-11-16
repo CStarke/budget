@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v62";
+  const APP_VERSION = "v63";
 
   // State
   const state = {
@@ -786,7 +786,8 @@
     }
   }
 
-  // Recent Transactions Storage & Manager (Last 5 Entries)
+  // Recent Transactions Storage & Manager (Last 6 Entries)
+  const RECENT_TRANSACTIONS_LIMIT = 6;
   const RECENT_TXS_KEY = "budget_recent_txs";
 
   function getRecentTransactions() {
@@ -799,7 +800,7 @@
 
   function saveRecentTransactions(txs) {
     try {
-      localStorage.setItem(RECENT_TXS_KEY, JSON.stringify(txs.slice(0, 5)));
+      localStorage.setItem(RECENT_TXS_KEY, JSON.stringify(txs.slice(0, RECENT_TRANSACTIONS_LIMIT)));
     } catch (e) {
       console.error("Failed to save recent transactions:", e);
     }
