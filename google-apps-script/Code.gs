@@ -714,7 +714,9 @@ function editTransaction(data) {
       sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
       sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
     }
-    sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
+    var trailingRow = startRow + allRows.length;
+    var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
+    sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
     SpreadsheetApp.flush();
 
     // Insert into new sheet
@@ -880,12 +882,14 @@ function deleteLastMatchingTransaction(data) {
     // Deleting the very last populated row: just clear it
     sheet.getRange(clearedRow, 1, 1, maxCol).clearContent();
   } else {
-    // Deleting from the middle: remove from array, rewrite rows, and clear the single trailing row
+    // Deleting from the middle: remove from array, rewrite rows, and clear all trailing rows
     allRows.splice(deleteIndex, 1);
     sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
     sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
-    sheet.getRange(lastPopRow, 1, 1, maxCol).clearContent();
+    var trailingRow = startRow + allRows.length;
+    var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
+    sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
   }
   
   SpreadsheetApp.flush();
