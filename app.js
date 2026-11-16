@@ -86,6 +86,20 @@
     btnAddQuickFillOption: document.getElementById("btnAddQuickFillOption"),
     btnExportPresets: document.getElementById("btnExportPresets"),
     btnImportPresets: document.getElementById("btnImportPresets"),
+    importPresetsModal: document.getElementById("importPresetsModal"),
+    importModalTitle: document.getElementById("importModalTitle"),
+    btnCloseImportPresets: document.getElementById("btnCloseImportPresets"),
+    importPasteView: document.getElementById("importPasteView"),
+    btnPasteClipboard: document.getElementById("btnPasteClipboard"),
+    importFallbackContainer: document.getElementById("importFallbackContainer"),
+    importFallbackTextarea: document.getElementById("importFallbackTextarea"),
+    btnSubmitFallbackImport: document.getElementById("btnSubmitFallbackImport"),
+    importConflictView: document.getElementById("importConflictView"),
+    conflictSummaryText: document.getElementById("conflictSummaryText"),
+    btnConflictKeepAll: document.getElementById("btnConflictKeepAll"),
+    btnConflictReplaceAll: document.getElementById("btnConflictReplaceAll"),
+    conflictList: document.getElementById("conflictList"),
+    btnApplyConflictResolution: document.getElementById("btnApplyConflictResolution"),
     qfSortableList: document.getElementById("qfSortableList"),
     qfEmptyHint: document.getElementById("qfEmptyHint"),
     quickFillEditorModal: document.getElementById("quickFillEditorModal"),
@@ -2074,6 +2088,11 @@
     });
   }
 
+  // Pluralization helper
+  function formatPresetCount(count) {
+    return `${count} ${count === 1 ? "preset" : "presets"}`;
+  }
+
   // Preset Backup & Restore (Export / Import Wheel Presets)
   async function exportQuickFillPresets() {
     const options = getQuickFillOptions();
@@ -2088,24 +2107,98 @@
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(jsonStr);
         haptic(15);
-        showToast(`Copied ${options.length} preset(s) to clipboard!`, "success");
+        showToast(`Copied ${formatPresetCount(options.length)} to clipboard!`, "success");
         return;
       }
     } catch (e) {
-      // Fallback to prompt
+      // Fallback below
     }
 
-    window.prompt("Copy your preset JSON below:", jsonStr);
+    // Fallback: off-screen textarea copy without prompt
+    try {
+      const t = document.createElement("textarea");
+      t.value = jsonStr;
+      t.style.position = "fixed";
+      t.style.top = "-9999px";
+      t.style.left = "-9999px";
+      t.style.opacity = "0";
+      t.style.pointerEvents = "none";
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      document.body.removeChild(t);
+      haptic(15);
+      showToast(`Copied ${formatPresetCount(options.length)} to clipboard!`, "success");
+    } catch (err) {
+      showToast("Unable to copy presets to clipboard.", "error");
+    }
   }
 
-  function importQuickFillPresets() {
-    const input = window.prompt("Paste your preset JSON here:");
-    if (!input || !input.trim()) return;
+  // In-memory conflict resolution queue
+  let pendingConflicts = [];
+  let pendingNonConflicts = [];
 
+  function openImportModal() {
+    pendingConflicts = [];
+    pendingNonConflicts = [];
+    if (elements.importModalTitle) elements.importModalTitle.textContent = "Import Presets";
+    if (elements.importPasteView) elements.importPasteView.style.display = "block";
+    if (elements.importConflictView) elements.importConflictView.style.display = "none";
+    if (elements.importFallbackContainer) elements.importFallbackContainer.style.display = "none";
+    if (elements.importFallbackTextarea) elements.importFallbackTextarea.value = "";
+    if (elements.importPresetsModal) elements.importPresetsModal.classList.add("open");
+  }
+
+  function closeImportModal() {
+    if (elements.importPresetsModal) elements.importPresetsModal.classList.remove("open");
+  }
+
+  async function handlePasteClipboardClick() {
+    haptic(15);
     try {
-      const parsed = JSON.parse(input.trim());
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          processImportData(text.trim());
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Clipboard read error or denied:", err);
+    }
+
+    // If direct clipboard reading is unavailable or blocked by browser permissions,
+    // gracefully show the clean in-app fallback textarea
+    if (elements.importFallbackContainer) {
+      elements.importFallbackContainer.style.display = "block";
+      if (elements.importFallbackTextarea) {
+        elements.importFallbackTextarea.focus();
+      }
+      showToast("Clipboard blocked. Paste text manually below.", "info");
+    }
+  }
+
+  function handleFallbackImportSubmit() {
+    const text = elements.importFallbackTextarea ? elements.importFallbackTextarea.value.trim() : "";
+    if (!text) {
+      showToast("Please paste preset data first.", "info");
+      return;
+    }
+    processImportData(text);
+  }
+
+  function formatPresetDetails(p) {
+    const amtStr = p.amount && p.amount > 0 ? `$${p.amount.toFixed(2)}` : "No amt";
+    const catStr = p.category || "No cat";
+    const routeStr = (p.from || p.to) ? `${p.from || "Any"} → ${p.to || "Any"}` : "";
+    return routeStr ? `${amtStr} • ${catStr} • ${routeStr}` : `${amtStr} • ${catStr}`;
+  }
+
+  function processImportData(jsonText) {
+    try {
+      const parsed = JSON.parse(jsonText);
       if (!Array.isArray(parsed)) {
-        throw new Error("Invalid format: expected a JSON array.");
+        throw new Error("Invalid format: expected array.");
       }
 
       const validPresets = [];
@@ -2126,39 +2219,203 @@
 
       if (validPresets.length === 0) {
         haptic([20, 30, 20]);
-        showToast("No valid presets found in JSON.", "error");
+        showToast("No valid presets found.", "error");
         return;
       }
 
       const existing = getQuickFillOptions();
-      let finalPresets = validPresets;
 
-      if (existing.length > 0) {
-        const shouldMerge = window.confirm(
-          `You currently have ${existing.length} preset(s).\n\nTap "OK" to MERGE with existing presets, or "Cancel" to OVERWRITE.`
-        );
-        if (shouldMerge) {
-          const existingTitles = new Set(existing.map((e) => e.title.toLowerCase()));
-          finalPresets = [...existing];
-          validPresets.forEach((p) => {
-            if (!existingTitles.has(p.title.toLowerCase())) {
-              finalPresets.push(p);
-              existingTitles.add(p.title.toLowerCase());
-            }
+      // Detect conflicts based on identical title/description (case-insensitive)
+      const existingMap = new Map();
+      existing.forEach((p) => {
+        existingMap.set(p.title.trim().toLowerCase(), p);
+      });
+
+      const conflicts = [];
+      const nonConflicts = [];
+
+      validPresets.forEach((incoming) => {
+        const key = incoming.title.trim().toLowerCase();
+        if (existingMap.has(key)) {
+          conflicts.push({
+            incoming: incoming,
+            existing: existingMap.get(key),
+            choice: "replace" // Default to replace incoming
           });
+        } else {
+          nonConflicts.push(incoming);
         }
+      });
+
+      // Scenario A: No conflicts at all!
+      if (conflicts.length === 0) {
+        const finalPresets = [...existing, ...nonConflicts];
+        saveQuickFillOptions(finalPresets);
+        renderQuickFillSettingsList();
+        updateWheelVisibility();
+        closeImportModal();
+        haptic(15);
+        showToast(`Imported ${formatPresetCount(validPresets.length)} successfully!`, "success");
+        return;
       }
 
-      saveQuickFillOptions(finalPresets);
-      renderQuickFillSettingsList();
-      updateWheelVisibility();
+      // Scenario B: 1+ conflicts exist. Show Conflict Resolution View!
+      pendingConflicts = conflicts;
+      pendingNonConflicts = nonConflicts;
+      renderConflictList();
+
+      if (elements.importPasteView) elements.importPasteView.style.display = "none";
+      if (elements.importConflictView) elements.importConflictView.style.display = "flex";
+      if (elements.importModalTitle) elements.importModalTitle.textContent = "Resolve Conflicts";
+      if (elements.conflictSummaryText) {
+        elements.conflictSummaryText.textContent = `${formatPresetCount(conflicts.length)} already exist:`;
+      }
       haptic(15);
-      showToast(`Imported ${finalPresets.length} preset(s) successfully!`, "success");
     } catch (err) {
-      console.error("Preset import error:", err);
+      console.error("Import parse error:", err);
       haptic([20, 30, 20]);
-      showToast("Invalid JSON. Import failed.", "error");
+      showToast("Invalid JSON data. Import failed.", "error");
     }
+  }
+
+  function renderConflictList() {
+    if (!elements.conflictList) return;
+    elements.conflictList.innerHTML = "";
+
+    pendingConflicts.forEach((conflict, index) => {
+      const card = document.createElement("div");
+      card.className = "conflict-item";
+      card.dataset.index = index;
+
+      // Title
+      const title = document.createElement("div");
+      title.className = "conflict-item-title";
+      title.textContent = conflict.incoming.title;
+
+      // Comparison Box
+      const comp = document.createElement("div");
+      comp.className = "conflict-comparison";
+
+      // Row: Existing
+      const existingRow = document.createElement("div");
+      existingRow.className = "conflict-row";
+      existingRow.innerHTML = `
+        <span class="conflict-tag existing">Existing</span>
+        <span class="conflict-details" title="${formatPresetDetails(conflict.existing)}">${formatPresetDetails(conflict.existing)}</span>
+      `;
+
+      // Row: Incoming
+      const incomingRow = document.createElement("div");
+      incomingRow.className = "conflict-row";
+      incomingRow.innerHTML = `
+        <span class="conflict-tag incoming">Imported</span>
+        <span class="conflict-details" title="${formatPresetDetails(conflict.incoming)}">${formatPresetDetails(conflict.incoming)}</span>
+      `;
+
+      comp.appendChild(existingRow);
+      comp.appendChild(incomingRow);
+
+      // Segmented Toggle Group
+      const group = document.createElement("div");
+      group.className = "conflict-toggle-group";
+
+      const keepBtn = document.createElement("button");
+      keepBtn.type = "button";
+      keepBtn.className = `conflict-choice-btn ${conflict.choice === "keep" ? "active" : ""}`;
+      keepBtn.dataset.choice = "keep";
+      keepBtn.textContent = "Keep Existing";
+
+      const replaceBtn = document.createElement("button");
+      replaceBtn.type = "button";
+      replaceBtn.className = `conflict-choice-btn ${conflict.choice === "replace" ? "active" : ""}`;
+      replaceBtn.dataset.choice = "replace";
+      replaceBtn.textContent = "Replace";
+
+      keepBtn.addEventListener("click", () => {
+        haptic(10);
+        conflict.choice = "keep";
+        keepBtn.classList.add("active");
+        replaceBtn.classList.remove("active");
+      });
+
+      replaceBtn.addEventListener("click", () => {
+        haptic(10);
+        conflict.choice = "replace";
+        replaceBtn.classList.add("active");
+        keepBtn.classList.remove("active");
+      });
+
+      group.appendChild(keepBtn);
+      group.appendChild(replaceBtn);
+
+      card.appendChild(title);
+      card.appendChild(comp);
+      card.appendChild(group);
+
+      elements.conflictList.appendChild(card);
+    });
+  }
+
+  function setAllConflictsChoice(choice) {
+    haptic(15);
+    pendingConflicts.forEach((c) => {
+      c.choice = choice;
+    });
+    if (elements.conflictList) {
+      const cards = elements.conflictList.querySelectorAll(".conflict-item");
+      cards.forEach((card) => {
+        const keepBtn = card.querySelector('.conflict-choice-btn[data-choice="keep"]');
+        const replaceBtn = card.querySelector('.conflict-choice-btn[data-choice="replace"]');
+        if (keepBtn && replaceBtn) {
+          if (choice === "keep") {
+            keepBtn.classList.add("active");
+            replaceBtn.classList.remove("active");
+          } else {
+            replaceBtn.classList.add("active");
+            keepBtn.classList.remove("active");
+          }
+        }
+      });
+    }
+  }
+
+  function applyConflictResolution() {
+    const existing = getQuickFillOptions();
+    
+    // Map existing items by lowercase title
+    const finalMap = new Map();
+    existing.forEach((p) => {
+      finalMap.set(p.title.trim().toLowerCase(), p);
+    });
+
+    // Apply user choice for each conflict
+    pendingConflicts.forEach((c) => {
+      const key = c.incoming.title.trim().toLowerCase();
+      if (c.choice === "replace") {
+        // Replace with imported data while keeping original id for continuity
+        finalMap.set(key, {
+          ...c.incoming,
+          id: (finalMap.get(key) && finalMap.get(key).id) || c.incoming.id
+        });
+      }
+      // If "keep", finalMap already has existing item unchanged!
+    });
+
+    // Append non-conflicting new items
+    pendingNonConflicts.forEach((p) => {
+      const key = p.title.trim().toLowerCase();
+      if (!finalMap.has(key)) {
+        finalMap.set(key, p);
+      }
+    });
+
+    const finalPresets = Array.from(finalMap.values());
+    saveQuickFillOptions(finalPresets);
+    renderQuickFillSettingsList();
+    updateWheelVisibility();
+    closeImportModal();
+    haptic(15);
+    showToast(`Import finished! ${formatPresetCount(finalPresets.length)} ready.`, "success");
   }
 
   if (elements.btnExportPresets) {
@@ -2166,7 +2423,37 @@
   }
 
   if (elements.btnImportPresets) {
-    elements.btnImportPresets.addEventListener("click", importQuickFillPresets);
+    elements.btnImportPresets.addEventListener("click", openImportModal);
+  }
+
+  if (elements.btnCloseImportPresets) {
+    elements.btnCloseImportPresets.addEventListener("click", closeImportModal);
+  }
+
+  if (elements.btnPasteClipboard) {
+    elements.btnPasteClipboard.addEventListener("click", handlePasteClipboardClick);
+  }
+
+  if (elements.btnSubmitFallbackImport) {
+    elements.btnSubmitFallbackImport.addEventListener("click", handleFallbackImportSubmit);
+  }
+
+  if (elements.btnConflictKeepAll) {
+    elements.btnConflictKeepAll.addEventListener("click", () => setAllConflictsChoice("keep"));
+  }
+
+  if (elements.btnConflictReplaceAll) {
+    elements.btnConflictReplaceAll.addEventListener("click", () => setAllConflictsChoice("replace"));
+  }
+
+  if (elements.btnApplyConflictResolution) {
+    elements.btnApplyConflictResolution.addEventListener("click", applyConflictResolution);
+  }
+
+  if (elements.importPresetsModal) {
+    elements.importPresetsModal.addEventListener("click", (e) => {
+      if (e.target === elements.importPresetsModal) closeImportModal();
+    });
   }
 
   if (elements.btnOpenQuickFillSettings) {
