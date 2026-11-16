@@ -356,6 +356,23 @@ function writeTransactionAtRow(sheet, colMap, targetRow, nextRow, dateVal, descV
 }
 
 /**
+ * Clears all cell borders in Column F (Amount) starting from Row 2 downwards.
+ */
+function clearAmountColumnBorders(sheet, colMap) {
+  try {
+    var amountCol = (colMap && colMap.AMOUNT) ? colMap.AMOUNT : 6;
+    var startRow = 2;
+    var maxRows = Math.max(sheet.getLastRow() || 0, sheet.getMaxRows() || 0, 2);
+    var numRows = maxRows - startRow + 1;
+    if (numRows > 0) {
+      sheet.getRange(startRow, amountCol, numRows, 1).setBorder(false, false, false, false, false, false);
+    }
+  } catch (e) {
+    // Graceful fallback
+  }
+}
+
+/**
  * Retrieves the most recent N transactions from the budget sheet.
  * Reliably scans from the first transaction row down to the last row,
  * correctly handling empty trailing rows or formatted blank cells.
@@ -389,6 +406,7 @@ function getRecentTransactionsFromSheet(sheet, colMap, limit) {
       for (var k = 0; k < rowsToClear; k++) {
         try { sheet.deleteRow(trailingRow); } catch (e) {}
       }
+      clearAmountColumnBorders(sheet, colMap);
       SpreadsheetApp.flush();
       numRows = checkRows.length;
     }
@@ -588,6 +606,7 @@ function appendTransaction(data) {
     }
   }
   
+  clearAmountColumnBorders(sheet, colMap);
   SpreadsheetApp.flush();
 
   return {
@@ -713,6 +732,7 @@ function editTransaction(data) {
     sheet.getRange(targetRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
 
+    clearAmountColumnBorders(sheet, colMap);
     SpreadsheetApp.flush();
     return {
       success: true,
@@ -738,6 +758,7 @@ function editTransaction(data) {
     var trailingRow = startRow + allRows.length;
     var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
     sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+    clearAmountColumnBorders(sheet, colMap);
     SpreadsheetApp.flush();
 
     // Insert into new sheet
@@ -788,6 +809,7 @@ function editTransaction(data) {
   sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
   sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
   sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+  clearAmountColumnBorders(sheet, colMap);
   SpreadsheetApp.flush();
 
   var destRow = startRow + insertIndex;
@@ -887,6 +909,7 @@ function removeTrailingDuplicates() {
     for (var r = 0; r < rowsToClear; r++) {
       try { sheet.deleteRow(trailingRow); } catch (e) {}
     }
+    clearAmountColumnBorders(sheet, colMap);
     SpreadsheetApp.flush();
     return "Removed " + (origLen - allRows.length) + " trailing duplicate row(s).";
   }
@@ -985,6 +1008,7 @@ function deleteLastMatchingTransaction(data) {
     try { sheet.deleteRow(trailingRow); } catch (e) {}
   }
   
+  clearAmountColumnBorders(sheet, colMap);
   SpreadsheetApp.flush();
   var updatedRecent = getRecentTransactionsFromSheet(sheet, colMap, 5);
   return { 
@@ -1041,6 +1065,7 @@ function batchProcessTransactions(data) {
     sheet.getRange(targetRow, 1, matrix.length, maxCol).setValues(matrix);
     sheet.getRange(targetRow, colMap.DATE, matrix.length, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, colMap.AMOUNT, matrix.length, 1).setNumberFormat("$#,##0.00");
+    clearAmountColumnBorders(sheet, colMap);
     sheetInfo.rows = [];
   }
 
