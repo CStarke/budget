@@ -256,6 +256,18 @@
           </button>
         </div>
 
+        <!-- Haptic Feedback Toggle Row -->
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-info">
+            <span class="settings-toggle-title">Haptic Feedback</span>
+            <span class="settings-toggle-desc">Tactile vibrations on buttons &amp; wheel</span>
+          </div>
+          <label class="toggle-switch" for="hapticsToggle">
+            <input type="checkbox" id="hapticsToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
         <button type="button" class="btn-save-settings" id="btnSaveSettings">Save &amp; Connect</button>
         <button type="button" class="btn-sync-now" id="btnSyncNow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -293,6 +305,24 @@
         </div>
         <div class="qf-empty-hint" id="qfEmptyHint" style="display: none; text-align: center; padding: 28px 12px; color: var(--text-muted); font-size: 14px;">
           No quick fill options yet.<br>Tap <b>+ Add Option</b> above to create your first wheel preset.
+        </div>
+        <div class="qf-backup-actions">
+          <button type="button" class="btn-qf-backup" id="btnExportPresets">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export Presets
+          </button>
+          <button type="button" class="btn-qf-backup" id="btnImportPresets">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Import Presets
+          </button>
         </div>
       </div>
     </div>

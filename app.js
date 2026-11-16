@@ -9,6 +9,7 @@
   const state = {
     scriptUrl: localStorage.getItem("budget_script_url") || "",
     sheetName: localStorage.getItem("budget_sheet_name") || "Budget",
+    hapticsEnabled: localStorage.getItem("budget_haptics_enabled") !== "false",
     defaults: {
       category: localStorage.getItem("budget_default_category") || "",
       from: localStorage.getItem("budget_default_from") || "",
@@ -63,6 +64,7 @@
     btnCloseSettings: document.getElementById("btnCloseSettings"),
     settingsModal: document.getElementById("settingsModal"),
     scriptUrlInput: document.getElementById("scriptUrlInput"),
+    hapticsToggle: document.getElementById("hapticsToggle"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
     btnSyncNow: document.getElementById("btnSyncNow"),
     queueBadge: document.getElementById("queueBadge"),
@@ -82,6 +84,8 @@
     quickFillSettingsModal: document.getElementById("quickFillSettingsModal"),
     btnCloseQuickFillSettings: document.getElementById("btnCloseQuickFillSettings"),
     btnAddQuickFillOption: document.getElementById("btnAddQuickFillOption"),
+    btnExportPresets: document.getElementById("btnExportPresets"),
+    btnImportPresets: document.getElementById("btnImportPresets"),
     qfSortableList: document.getElementById("qfSortableList"),
     qfEmptyHint: document.getElementById("qfEmptyHint"),
     quickFillEditorModal: document.getElementById("quickFillEditorModal"),
@@ -164,6 +168,7 @@
   }
 
   function haptic(pattern = 12) {
+    if (!state.hapticsEnabled) return;
     // 1. Android / standard Vibration API
     if ("vibrate" in navigator && typeof navigator.vibrate === "function") {
       try {
@@ -1113,6 +1118,9 @@
   // Settings Modal Controls
   function openSettings() {
     elements.scriptUrlInput.value = state.scriptUrl;
+    if (elements.hapticsToggle) {
+      elements.hapticsToggle.checked = state.hapticsEnabled;
+    }
     updateDefaultButtons();
     updateQueueUI();
     elements.settingsModal.classList.add("open");
@@ -1126,6 +1134,10 @@
     const url = elements.scriptUrlInput.value.trim();
     state.scriptUrl = url;
     localStorage.setItem("budget_script_url", url);
+    if (elements.hapticsToggle) {
+      state.hapticsEnabled = elements.hapticsToggle.checked;
+      localStorage.setItem("budget_haptics_enabled", state.hapticsEnabled ? "true" : "false");
+    }
     closeSettings();
     showToast("Settings saved!", "success");
     syncOptions(true);
@@ -1249,6 +1261,15 @@
   });
   elements.btnCloseSettings.addEventListener("click", closeSettings);
   elements.btnSaveSettings.addEventListener("click", saveSettings);
+  if (elements.hapticsToggle) {
+    elements.hapticsToggle.addEventListener("change", (e) => {
+      state.hapticsEnabled = e.target.checked;
+      localStorage.setItem("budget_haptics_enabled", state.hapticsEnabled ? "true" : "false");
+      if (state.hapticsEnabled) {
+        haptic(15);
+      }
+    });
+  }
   elements.btnSyncNow.addEventListener("click", () => syncOptions(true));
   if (elements.btnSyncQueueNow) {
     elements.btnSyncQueueNow.addEventListener("click", () => processOfflineQueue(true));
@@ -2051,6 +2072,101 @@
         showToast("Option deleted.", "info");
       }
     });
+  }
+
+  // Preset Backup & Restore (Export / Import Wheel Presets)
+  async function exportQuickFillPresets() {
+    const options = getQuickFillOptions();
+    if (!options || options.length === 0) {
+      showToast("No presets to export.", "info");
+      return;
+    }
+
+    const jsonStr = JSON.stringify(options, null, 2);
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(jsonStr);
+        haptic(15);
+        showToast(`Copied ${options.length} preset(s) to clipboard!`, "success");
+        return;
+      }
+    } catch (e) {
+      // Fallback to prompt
+    }
+
+    window.prompt("Copy your preset JSON below:", jsonStr);
+  }
+
+  function importQuickFillPresets() {
+    const input = window.prompt("Paste your preset JSON here:");
+    if (!input || !input.trim()) return;
+
+    try {
+      const parsed = JSON.parse(input.trim());
+      if (!Array.isArray(parsed)) {
+        throw new Error("Invalid format: expected a JSON array.");
+      }
+
+      const validPresets = [];
+      parsed.forEach((item) => {
+        if (!item || typeof item !== "object") return;
+        const title = String(item.title || "").trim();
+        if (!title) return;
+
+        validPresets.push({
+          id: item.id || ("qf_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5)),
+          title: title,
+          amount: typeof item.amount === "number" && item.amount > 0 ? item.amount : null,
+          category: typeof item.category === "string" ? item.category : "",
+          from: typeof item.from === "string" ? item.from : "",
+          to: typeof item.to === "string" ? item.to : ""
+        });
+      });
+
+      if (validPresets.length === 0) {
+        haptic([20, 30, 20]);
+        showToast("No valid presets found in JSON.", "error");
+        return;
+      }
+
+      const existing = getQuickFillOptions();
+      let finalPresets = validPresets;
+
+      if (existing.length > 0) {
+        const shouldMerge = window.confirm(
+          `You currently have ${existing.length} preset(s).\n\nTap "OK" to MERGE with existing presets, or "Cancel" to OVERWRITE.`
+        );
+        if (shouldMerge) {
+          const existingTitles = new Set(existing.map((e) => e.title.toLowerCase()));
+          finalPresets = [...existing];
+          validPresets.forEach((p) => {
+            if (!existingTitles.has(p.title.toLowerCase())) {
+              finalPresets.push(p);
+              existingTitles.add(p.title.toLowerCase());
+            }
+          });
+        }
+      }
+
+      saveQuickFillOptions(finalPresets);
+      renderQuickFillSettingsList();
+      updateWheelVisibility();
+      haptic(15);
+      showToast(`Imported ${finalPresets.length} preset(s) successfully!`, "success");
+    } catch (err) {
+      console.error("Preset import error:", err);
+      haptic([20, 30, 20]);
+      showToast("Invalid JSON. Import failed.", "error");
+    }
+  }
+
+  if (elements.btnExportPresets) {
+    elements.btnExportPresets.addEventListener("click", exportQuickFillPresets);
+  }
+
+  if (elements.btnImportPresets) {
+    elements.btnImportPresets.addEventListener("click", importQuickFillPresets);
   }
 
   if (elements.btnOpenQuickFillSettings) {
