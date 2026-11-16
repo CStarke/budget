@@ -5,6 +5,9 @@
 (function () {
   "use strict";
 
+  // Application Version
+  const APP_VERSION = "v56";
+
   // State
   const state = {
     scriptUrl: localStorage.getItem("budget_script_url") || "",
@@ -65,6 +68,7 @@
     settingsModal: document.getElementById("settingsModal"),
     scriptUrlInput: document.getElementById("scriptUrlInput"),
     hapticsToggle: document.getElementById("hapticsToggle"),
+    settingsVersion: document.getElementById("settingsVersion"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
     btnSyncNow: document.getElementById("btnSyncNow"),
     queueBadge: document.getElementById("queueBadge"),
@@ -1187,6 +1191,9 @@
     if (elements.hapticsToggle) {
       elements.hapticsToggle.checked = state.hapticsEnabled;
     }
+    if (elements.settingsVersion) {
+      elements.settingsVersion.textContent = APP_VERSION;
+    }
     updateDefaultButtons();
     updateQueueUI();
     elements.settingsModal.classList.add("open");
@@ -1333,6 +1340,18 @@
       localStorage.setItem("budget_haptics_enabled", state.hapticsEnabled ? "true" : "false");
       if (state.hapticsEnabled) {
         haptic(15);
+      }
+    });
+  }
+  if (elements.settingsVersion) {
+    elements.settingsVersion.textContent = APP_VERSION;
+    elements.settingsVersion.addEventListener("click", () => {
+      haptic(15);
+      showToast(`Budget App ${APP_VERSION}`, "info");
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistration().then((reg) => {
+          if (reg) reg.update();
+        });
       }
     });
   }
