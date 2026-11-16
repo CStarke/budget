@@ -242,6 +242,85 @@ function findNextAvailableRow(sheet, colMap) {
 }
 
 /**
+ * Normalizes any Date or date string to a midnight timestamp (date-only comparison).
+ */
+function normalizeDateOnly(dateVal) {
+  if (!dateVal) return 0;
+  var dt = (dateVal instanceof Date) ? dateVal : parseDateInput(dateVal);
+  if (isNaN(dt.getTime())) return 0;
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+}
+
+/**
+ * Finds the exact chronological row to insert a transaction.
+ * Scans populated rows to locate the first row whose date is strictly greater (>)
+ * than targetDateVal. If found, returns that row index so the transaction is placed
+ * at the END of targetDateVal (and before all subsequent days).
+ * If no subsequent row exists, returns findNextAvailableRow.
+ */
+function findChronologicalInsertionRow(sheet, colMap, targetDateVal) {
+  var nextRow = findNextAvailableRow(sheet, colMap);
+  var headerRow = colMap.headerRow || 1;
+  var startRow = headerRow + 1;
+  var lastPopulatedRow = nextRow - 1;
+
+  if (lastPopulatedRow < startRow) {
+    return startRow;
+  }
+
+  var targetTime = normalizeDateOnly(targetDateVal);
+  if (targetTime <= 0) return nextRow;
+
+  var numRows = lastPopulatedRow - startRow + 1;
+  var dateValues = sheet.getRange(startRow, colMap.DATE, numRows, 1).getValues();
+
+  for (var i = 0; i < dateValues.length; i++) {
+    var cellDate = dateValues[i][0];
+    if (cellDate) {
+      var cellTime = normalizeDateOnly(cellDate);
+      if (cellTime > targetTime) {
+        return startRow + i; // 1-based row index
+      }
+    }
+  }
+
+  return nextRow;
+}
+
+/**
+ * Inserts transaction values at a specific chronological row.
+ * If targetRow is in the middle of existing transactions, shifts columns 1..maxCol down by 1 row,
+ * preserving all formula columns in columns G+ and preventing #REF! errors.
+ */
+function writeTransactionAtRow(sheet, colMap, targetRow, nextRow, dateVal, descVal, catVal, fromVal, toVal, amountVal) {
+  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+
+  // If inserting before existing rows, shift columns 1..maxCol down by 1
+  if (targetRow < nextRow) {
+    var numToShift = nextRow - targetRow;
+    // Ensure sheet has enough physical rows
+    if (nextRow > sheet.getMaxRows()) {
+      sheet.insertRowsAfter(sheet.getMaxRows(), 50);
+    }
+    var currentValues = sheet.getRange(targetRow, 1, numToShift, maxCol).getValues();
+    sheet.getRange(targetRow + 1, 1, numToShift, maxCol).setValues(currentValues);
+    sheet.getRange(targetRow + 1, colMap.DATE, numToShift, 1).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(targetRow + 1, colMap.AMOUNT, numToShift, 1).setNumberFormat("$#,##0.00");
+  }
+
+  // Write new transaction into targetRow
+  sheet.getRange(targetRow, colMap.DATE).setValue(dateVal);
+  sheet.getRange(targetRow, colMap.DESCRIPTION).setValue(descVal);
+  sheet.getRange(targetRow, colMap.CATEGORY).setValue(catVal);
+  sheet.getRange(targetRow, colMap.FROM).setValue(fromVal);
+  sheet.getRange(targetRow, colMap.TO).setValue(toVal);
+  sheet.getRange(targetRow, colMap.AMOUNT).setValue(amountVal);
+
+  sheet.getRange(targetRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
+  sheet.getRange(targetRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
+}
+
+/**
  * Retrieves the most recent N transactions from the budget sheet.
  * Reliably scans from the first transaction row down to the last row,
  * correctly handling empty trailing rows or formatted blank cells.
@@ -373,12 +452,11 @@ function parseDateInput(inputStr) {
 }
 
 /**
- * Appends transaction to the budget sheet.
+ * Appends transaction to the budget sheet in its exact chronological spot.
  */
 function appendTransaction(data) {
   var sheet = getTargetSheet(data ? data.date : null);
   var colMap = detectColumns(sheet);
-  var targetRow = findNextAvailableRow(sheet, colMap);
   
   var dateVal = parseDateInput(data.date);
   var descVal = data.description ? String(data.description).trim() : "";
@@ -388,16 +466,12 @@ function appendTransaction(data) {
   var amountVal = parseFloat(data.amount);
   if (isNaN(amountVal)) amountVal = 0.00;
   
-  sheet.getRange(targetRow, colMap.DATE).setValue(dateVal);
-  sheet.getRange(targetRow, colMap.DESCRIPTION).setValue(descVal);
-  sheet.getRange(targetRow, colMap.CATEGORY).setValue(catVal);
-  sheet.getRange(targetRow, colMap.FROM).setValue(fromVal);
-  sheet.getRange(targetRow, colMap.TO).setValue(toVal);
-  sheet.getRange(targetRow, colMap.AMOUNT).setValue(amountVal);
-  
-  sheet.getRange(targetRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
-  sheet.getRange(targetRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
-  
+  var nextRow = findNextAvailableRow(sheet, colMap);
+  var targetRow = findChronologicalInsertionRow(sheet, colMap, dateVal);
+
+  writeTransactionAtRow(sheet, colMap, targetRow, nextRow, dateVal, descVal, catVal, fromVal, toVal, amountVal);
+  SpreadsheetApp.flush();
+
   return {
     success: true,
     message: "Transaction added successfully",
@@ -412,6 +486,167 @@ function appendTransaction(data) {
       to: toVal,
       amount: amountVal
     }
+  };
+}
+
+/**
+ * Edits an existing transaction in the budget sheet.
+ * If the date is unchanged, updates columns A-F strictly in-place, preserving its exact
+ * relative order among other transactions on that day.
+ * If the date changed to a different day, relocates the transaction to the end of the new day.
+ */
+function editTransaction(data) {
+  var orig = data.original || data;
+  var updated = data.updated || data;
+  
+  var origDateStr = orig.date;
+  var sheet = getTargetSheet(origDateStr);
+  var colMap = detectColumns(sheet);
+  var lastRow = sheet.getLastRow();
+  var headerRow = colMap.headerRow || 1;
+  var maxCol = Math.max(colMap.DATE, colMap.DESCRIPTION, colMap.CATEGORY, colMap.FROM, colMap.TO, colMap.AMOUNT, 6);
+
+  if (lastRow <= headerRow) {
+    return { success: false, error: "No transactions found in sheet." };
+  }
+
+  // 1. Locate the existing row
+  var targetRow = -1;
+  var numRows = lastRow - headerRow;
+  var values = sheet.getRange(headerRow + 1, 1, numRows, maxCol).getValues();
+
+  var origDesc = orig.description ? String(orig.description).trim().toLowerCase() : "";
+  var origAmt = parseFloat(String(orig.amount || "").replace(/[^0-9.-]/g, ""));
+  var origNormDate = normalizeDateOnly(origDateStr);
+
+  // If caller provided data.row or orig.row, test it first
+  var hintRow = data.row || orig.row;
+  if (hintRow && hintRow > headerRow && hintRow <= lastRow) {
+    var idx = hintRow - (headerRow + 1);
+    if (idx >= 0 && idx < values.length) {
+      var rowDesc = String(values[idx][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+      var rowAmt = parseFloat(String(values[idx][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+      var rowNormDate = normalizeDateOnly(values[idx][colMap.DATE - 1]);
+      if ((!origDesc || rowDesc === origDesc) && (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01) && (origNormDate === 0 || rowNormDate === origNormDate)) {
+        targetRow = hintRow;
+      }
+    }
+  }
+
+  // If hint wasn't an exact match, scan backwards from the bottom
+  if (targetRow === -1) {
+    for (var i = values.length - 1; i >= 0; i--) {
+      var rDesc = String(values[i][colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+      var rAmt = parseFloat(String(values[i][colMap.AMOUNT - 1] || "").replace(/[^0-9.-]/g, ""));
+      var rNormDate = normalizeDateOnly(values[i][colMap.DATE - 1]);
+      
+      var matchDesc = (!origDesc || rDesc === origDesc || (origDesc === "untitled" && !rDesc));
+      var matchAmt = (isNaN(origAmt) || Math.abs(rAmt - origAmt) < 0.01);
+      var matchDate = (origNormDate === 0 || rNormDate === origNormDate);
+
+      if (matchDesc && matchAmt && matchDate) {
+        targetRow = headerRow + 1 + i;
+        break;
+      }
+    }
+  }
+
+  if (targetRow === -1) {
+    return { success: false, error: "Original transaction could not be located in sheet." };
+  }
+
+  // Parse updated values
+  var newDateVal = parseDateInput(updated.date);
+  var newDescVal = updated.description ? String(updated.description).trim() : "";
+  var newCatVal = updated.category ? String(updated.category).trim() : "";
+  var newFromVal = updated.from ? String(updated.from).trim() : "";
+  var newToVal = updated.to ? String(updated.to).trim() : "";
+  var newAmountVal = parseFloat(updated.amount);
+  if (isNaN(newAmountVal)) newAmountVal = 0.00;
+
+  var newNormDate = normalizeDateOnly(newDateVal);
+  var rowNormDate = normalizeDateOnly(values[targetRow - (headerRow + 1)][colMap.DATE - 1]);
+
+  // Case 1: Date is UNCHANGED!
+  // Stay in the exact same row! Never move or reorder among other transactions on this day.
+  if (newNormDate === rowNormDate) {
+    sheet.getRange(targetRow, colMap.DATE).setValue(newDateVal);
+    sheet.getRange(targetRow, colMap.DESCRIPTION).setValue(newDescVal);
+    sheet.getRange(targetRow, colMap.CATEGORY).setValue(newCatVal);
+    sheet.getRange(targetRow, colMap.FROM).setValue(newFromVal);
+    sheet.getRange(targetRow, colMap.TO).setValue(newToVal);
+    sheet.getRange(targetRow, colMap.AMOUNT).setValue(newAmountVal);
+
+    sheet.getRange(targetRow, colMap.DATE).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(targetRow, colMap.AMOUNT).setNumberFormat("$#,##0.00");
+
+    SpreadsheetApp.flush();
+    return {
+      success: true,
+      message: "Transaction updated in-place.",
+      sheetName: sheet.getName(),
+      row: targetRow,
+      moved: false,
+      recentTransactions: getRecentTransactionsFromSheet(sheet, colMap, 5)
+    };
+  }
+
+  // Case 2: Date HAS CHANGED to a different day!
+  // Check if target sheet year changed (e.g. Budget 2025 vs Budget 2026)
+  var newSheet = getTargetSheet(updated.date);
+  if (newSheet.getName() !== sheet.getName()) {
+    // Clear from old sheet and shift rows up to close gap
+    var nextRowOld = findNextAvailableRow(sheet, colMap);
+    var shiftUpCount = nextRowOld - targetRow - 1;
+    if (shiftUpCount > 0) {
+      var shiftUpVals = sheet.getRange(targetRow + 1, 1, shiftUpCount, maxCol).getValues();
+      sheet.getRange(targetRow, 1, shiftUpCount, maxCol).setValues(shiftUpVals);
+      sheet.getRange(targetRow, colMap.DATE, shiftUpCount, 1).setNumberFormat("dd mmm yyyy");
+      sheet.getRange(targetRow, colMap.AMOUNT, shiftUpCount, 1).setNumberFormat("$#,##0.00");
+    }
+    sheet.getRange(nextRowOld - 1, 1, 1, maxCol).clearContent();
+
+    // Insert into new sheet
+    var newColMap = detectColumns(newSheet);
+    var newNextRow = findNextAvailableRow(newSheet, newColMap);
+    var newTargetRow = findChronologicalInsertionRow(newSheet, newColMap, newDateVal);
+    writeTransactionAtRow(newSheet, newColMap, newTargetRow, newNextRow, newDateVal, newDescVal, newCatVal, newFromVal, newToVal, newAmountVal);
+
+    SpreadsheetApp.flush();
+    return {
+      success: true,
+      message: "Transaction moved to " + newSheet.getName(),
+      sheetName: newSheet.getName(),
+      row: newTargetRow,
+      moved: true,
+      recentTransactions: getRecentTransactionsFromSheet(newSheet, newColMap, 5)
+    };
+  }
+
+  // Same sheet, different day:
+  var nextRowCur = findNextAvailableRow(sheet, colMap);
+  var numToShiftUp = nextRowCur - targetRow - 1;
+  if (numToShiftUp > 0) {
+    var rowsToShiftUp = sheet.getRange(targetRow + 1, 1, numToShiftUp, maxCol).getValues();
+    sheet.getRange(targetRow, 1, numToShiftUp, maxCol).setValues(rowsToShiftUp);
+    sheet.getRange(targetRow, colMap.DATE, numToShiftUp, 1).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(targetRow, colMap.AMOUNT, numToShiftUp, 1).setNumberFormat("$#,##0.00");
+  }
+  sheet.getRange(nextRowCur - 1, 1, 1, maxCol).clearContent();
+
+  // Find chronological insertion row in updated sheet state
+  var updatedNextRow = nextRowCur - 1;
+  var destRow = findChronologicalInsertionRow(sheet, colMap, newDateVal);
+  writeTransactionAtRow(sheet, colMap, destRow, updatedNextRow, newDateVal, newDescVal, newCatVal, newFromVal, newToVal, newAmountVal);
+
+  SpreadsheetApp.flush();
+  return {
+    success: true,
+    message: "Transaction date changed and moved to row " + destRow,
+    sheetName: sheet.getName(),
+    row: destRow,
+    moved: true,
+    recentTransactions: getRecentTransactionsFromSheet(sheet, colMap, 5)
   };
 }
 
@@ -549,6 +784,7 @@ function batchProcessTransactions(data) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     var isUndo = it.action === "undo" || it.action === "delete";
+    var isEdit = it.action === "edit" || it.action === "update";
     
     if (isUndo) {
       // Flush any queued adds before performing undo to maintain ordering
@@ -556,6 +792,13 @@ function batchProcessTransactions(data) {
         flushAddsForSheet(addsBySheet[sName]);
       }
       deleteLastMatchingTransaction(it);
+      processedCount++;
+    } else if (isEdit) {
+      // Flush any queued adds before performing edit
+      for (var sName in addsBySheet) {
+        flushAddsForSheet(addsBySheet[sName]);
+      }
+      editTransaction(it);
       processedCount++;
     } else {
       var sheet = getTargetSheet(it.date);
@@ -635,6 +878,12 @@ function doPost(e) {
     if (action === "undo" || action === "delete") {
       var undoResponse = deleteLastMatchingTransaction(data);
       return ContentService.createTextOutput(JSON.stringify(undoResponse))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === "edit" || action === "update") {
+      var editResponse = editTransaction(data);
+      return ContentService.createTextOutput(JSON.stringify(editResponse))
         .setMimeType(ContentService.MimeType.JSON);
     }
     

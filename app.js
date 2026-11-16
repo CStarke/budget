@@ -114,7 +114,22 @@
     btnQfTo: document.getElementById("btnQfTo"),
     qfToBtnText: document.getElementById("qfToBtnText"),
     btnSaveQuickFillOption: document.getElementById("btnSaveQuickFillOption"),
-    btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption")
+    btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption"),
+    editTxModal: document.getElementById("editTxModal"),
+    btnCloseEditTx: document.getElementById("btnCloseEditTx"),
+    editTxDescInput: document.getElementById("editTxDescInput"),
+    editTxAmountInput: document.getElementById("editTxAmountInput"),
+    btnEditTxDate: document.getElementById("btnEditTxDate"),
+    editTxDateText: document.getElementById("editTxDateText"),
+    editTxDatePicker: document.getElementById("editTxDatePicker"),
+    btnEditTxCategory: document.getElementById("btnEditTxCategory"),
+    editTxCatText: document.getElementById("editTxCatText"),
+    btnEditTxFrom: document.getElementById("btnEditTxFrom"),
+    editTxFromText: document.getElementById("editTxFromText"),
+    btnEditTxTo: document.getElementById("btnEditTxTo"),
+    editTxToText: document.getElementById("editTxToText"),
+    btnSaveEditTx: document.getElementById("btnSaveEditTx"),
+    btnDeleteEditTx: document.getElementById("btnDeleteEditTx")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -901,7 +916,291 @@
       right.appendChild(amt);
       row.appendChild(info);
       row.appendChild(right);
+
+      row.addEventListener("click", () => {
+        openEditTxModal(item);
+      });
+
       elements.recentList.appendChild(row);
+    });
+  }
+
+  // =========================================================================
+  // Edit Recent Transaction Controller
+  // =========================================================================
+
+  let editingTxState = {
+    original: null,
+    date: "",
+    description: "",
+    amount: 0,
+    category: "",
+    from: "",
+    to: "",
+    cents: 0
+  };
+
+  function openEditTxModal(tx) {
+    if (!tx) return;
+    editingTxState.original = tx;
+    editingTxState.date = tx.date || getFormattedDate(new Date());
+    editingTxState.description = tx.description || "";
+    editingTxState.amount = parseFloat(tx.amount || 0);
+    editingTxState.category = tx.category || "";
+    editingTxState.from = tx.from || "";
+    editingTxState.to = tx.to || "";
+    editingTxState.cents = Math.round(editingTxState.amount * 100);
+
+    if (elements.editTxDescInput) {
+      elements.editTxDescInput.value = editingTxState.description;
+    }
+    if (elements.editTxAmountInput) {
+      elements.editTxAmountInput.value = editingTxState.cents > 0 ? formatCentsWithCommas(editingTxState.cents) : "";
+    }
+    if (elements.editTxDateText) {
+      elements.editTxDateText.textContent = formatHumanDate(editingTxState.date);
+    }
+    if (elements.editTxDatePicker) {
+      elements.editTxDatePicker.value = editingTxState.date;
+    }
+    if (elements.editTxCatText) {
+      elements.editTxCatText.textContent = editingTxState.category || "(None)";
+      elements.editTxCatText.className = "pill-text" + (editingTxState.category ? "" : " placeholder");
+    }
+    if (elements.editTxFromText) {
+      elements.editTxFromText.textContent = editingTxState.from || "(None)";
+      elements.editTxFromText.className = "pill-text" + (editingTxState.from ? "" : " placeholder");
+    }
+    if (elements.editTxToText) {
+      elements.editTxToText.textContent = editingTxState.to || "(None)";
+      elements.editTxToText.className = "pill-text" + (editingTxState.to ? "" : " placeholder");
+    }
+
+    if (elements.editTxModal) {
+      elements.editTxModal.classList.add("open");
+    }
+    haptic(15);
+  }
+
+  function closeEditTxModal() {
+    if (elements.editTxModal) {
+      elements.editTxModal.classList.remove("open");
+    }
+  }
+
+  function handleEditTxAmountInput(e) {
+    const raw = e.target.value;
+    const digits = raw.replace(/\D/g, "");
+    editingTxState.cents = digits ? parseInt(digits, 10) : 0;
+    elements.editTxAmountInput.value = editingTxState.cents > 0 ? formatCentsWithCommas(editingTxState.cents) : "";
+  }
+
+  async function saveEditedTransaction() {
+    const orig = editingTxState.original;
+    if (!orig) return;
+
+    const title = elements.editTxDescInput.value.trim();
+    if (!title) {
+      haptic([20, 30, 20]);
+      highlightError(elements.editTxDescInput);
+      elements.editTxDescInput.focus();
+      return;
+    }
+
+    const amount = editingTxState.cents > 0 ? (editingTxState.cents / 100) : 0;
+    if (amount <= 0) {
+      haptic([20, 30, 20]);
+      highlightError(elements.editTxAmountInput);
+      elements.editTxAmountInput.focus();
+      return;
+    }
+
+    const updatedTx = {
+      date: editingTxState.date,
+      description: title,
+      amount: amount,
+      category: editingTxState.category,
+      from: editingTxState.from,
+      to: editingTxState.to
+    };
+
+    // Check if anything actually changed
+    const dateChanged = orig.date !== updatedTx.date;
+    const descChanged = orig.description !== updatedTx.description;
+    const amtChanged = Math.abs(parseFloat(orig.amount) - updatedTx.amount) >= 0.01;
+    const catChanged = (orig.category || "") !== (updatedTx.category || "");
+    const fromChanged = (orig.from || "") !== (updatedTx.from || "");
+    const toChanged = (orig.to || "") !== (updatedTx.to || "");
+
+    if (!dateChanged && !descChanged && !amtChanged && !catChanged && !fromChanged && !toChanged) {
+      closeEditTxModal();
+      return;
+    }
+
+    haptic(15);
+
+    // Optimistically update recent transactions list in localStorage
+    const recentList = getRecentTransactions();
+    const idx = recentList.findIndex(
+      (r) => r.id === orig.id || (r.description === orig.description && Math.abs(r.amount - orig.amount) < 0.01 && r.date === orig.date)
+    );
+    if (idx !== -1) {
+      recentList[idx] = { ...recentList[idx], ...updatedTx };
+      saveRecentTransactions(recentList);
+      renderRecentList();
+    }
+
+    // If the original transaction was in the offline queue (not yet synced to sheet):
+    const queue = getOfflineQueue();
+    const qIdx = queue.findIndex(
+      (q) => q.description === orig.description && Math.abs(q.amount - orig.amount) < 0.01 && q.date === orig.date
+    );
+    if (qIdx !== -1) {
+      queue[qIdx] = { ...queue[qIdx], ...updatedTx };
+      saveOfflineQueue(queue);
+      updateQueueUI();
+      closeEditTxModal();
+      showToast(`Updated "${title}" in offline queue!`, "success");
+      return;
+    }
+
+    // If offline, enqueue the edit action
+    if (!navigator.onLine || !state.scriptUrl) {
+      enqueueTransaction({
+        action: "edit",
+        original: orig,
+        updated: updatedTx
+      });
+      closeEditTxModal();
+      showToast(`Saved offline (${title}). Will sync with Sheet when online.`, "info");
+      return;
+    }
+
+    // Online: Send edit request to Google Apps Script
+    elements.btnSaveEditTx.disabled = true;
+    elements.btnSaveEditTx.textContent = "Saving to Sheet...";
+
+    try {
+      await fetch(state.scriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify({
+          action: "edit",
+          row: orig.row,
+          original: orig,
+          updated: updatedTx
+        })
+      });
+
+      haptic(15);
+      closeEditTxModal();
+      showToast(`Updated "${title}" in ${state.sheetName || "Sheet"}!`, "success");
+      setTimeout(() => {
+        fetchRecentTransactionsFromSheet();
+      }, 500);
+    } catch (err) {
+      console.warn("Failed to edit in sheet, queueing offline:", err);
+      enqueueTransaction({
+        action: "edit",
+        original: orig,
+        updated: updatedTx
+      });
+      closeEditTxModal();
+      showToast(`Queued update for "${title}". Will sync automatically.`, "info");
+    } finally {
+      elements.btnSaveEditTx.disabled = false;
+      elements.btnSaveEditTx.textContent = "Save Changes";
+    }
+  }
+
+  // Edit Modal Event Listeners
+  if (elements.btnCloseEditTx) {
+    elements.btnCloseEditTx.addEventListener("click", closeEditTxModal);
+  }
+
+  if (elements.editTxAmountInput) {
+    elements.editTxAmountInput.addEventListener("input", handleEditTxAmountInput);
+    elements.editTxAmountInput.addEventListener("focus", () => {
+      if (editingTxState.cents > 0) {
+        requestAnimationFrame(() => {
+          elements.editTxAmountInput.setSelectionRange(
+            elements.editTxAmountInput.value.length,
+            elements.editTxAmountInput.value.length
+          );
+        });
+      }
+    });
+  }
+
+  if (elements.btnEditTxDate) {
+    elements.btnEditTxDate.addEventListener("click", () => {
+      if (elements.editTxDatePicker.showPicker) {
+        elements.editTxDatePicker.showPicker();
+      } else {
+        elements.editTxDatePicker.click();
+      }
+    });
+  }
+
+  if (elements.editTxDatePicker) {
+    elements.editTxDatePicker.addEventListener("change", (e) => {
+      if (e.target.value) {
+        editingTxState.date = e.target.value;
+        elements.editTxDateText.textContent = formatHumanDate(editingTxState.date);
+      }
+    });
+  }
+
+  if (elements.btnEditTxCategory) {
+    elements.btnEditTxCategory.addEventListener("click", () => {
+      openPicker("category", false, (val) => {
+        editingTxState.category = val === "(None)" ? "" : val;
+        elements.editTxCatText.textContent = editingTxState.category || "(None)";
+        elements.editTxCatText.className = "pill-text" + (editingTxState.category ? "" : " placeholder");
+      }, editingTxState.category);
+    });
+  }
+
+  if (elements.btnEditTxFrom) {
+    elements.btnEditTxFrom.addEventListener("click", () => {
+      openPicker("from", false, (val) => {
+        editingTxState.from = val === "(None)" ? "" : val;
+        elements.editTxFromText.textContent = editingTxState.from || "(None)";
+        elements.editTxFromText.className = "pill-text" + (editingTxState.from ? "" : " placeholder");
+      }, editingTxState.from);
+    });
+  }
+
+  if (elements.btnEditTxTo) {
+    elements.btnEditTxTo.addEventListener("click", () => {
+      openPicker("to", false, (val) => {
+        editingTxState.to = val === "(None)" ? "" : val;
+        elements.editTxToText.textContent = editingTxState.to || "(None)";
+        elements.editTxToText.className = "pill-text" + (editingTxState.to ? "" : " placeholder");
+      }, editingTxState.to);
+    });
+  }
+
+  if (elements.btnSaveEditTx) {
+    elements.btnSaveEditTx.addEventListener("click", saveEditedTransaction);
+  }
+
+  if (elements.btnDeleteEditTx) {
+    elements.btnDeleteEditTx.addEventListener("click", () => {
+      if (editingTxState.original) {
+        const orig = editingTxState.original;
+        closeEditTxModal();
+        undoTransaction(orig);
+      }
+    });
+  }
+
+  if (elements.editTxModal) {
+    elements.editTxModal.addEventListener("click", (e) => {
+      if (e.target === elements.editTxModal) closeEditTxModal();
     });
   }
 
