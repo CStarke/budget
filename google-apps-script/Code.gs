@@ -372,8 +372,26 @@ function getRecentTransactionsFromSheet(sheet, colMap, limit) {
   var startRow = headerRow + 1;
   var numRows = lastRow - headerRow;
   var maxCol = colMap.maxCol || 6;
-  var values = sheet.getRange(startRow, 1, numRows, maxCol).getValues();
   var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
+
+  // Automatically detect and clean any trailing duplicate rows in the sheet
+  var nextRow = findNextAvailableRow(sheet, colMap);
+  var lastPopRow = nextRow - 1;
+  if (lastPopRow > startRow) {
+    var checkRows = sheet.getRange(startRow, 1, lastPopRow - startRow + 1, maxCol).getValues();
+    var beforeLen = checkRows.length;
+    cleanTrailingDuplicates(checkRows, colMap, tz);
+    if (checkRows.length < beforeLen) {
+      sheet.getRange(startRow, 1, checkRows.length, maxCol).setValues(checkRows);
+      var trailingRow = startRow + checkRows.length;
+      var rowsToClear = lastPopRow - trailingRow + 1;
+      sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+      SpreadsheetApp.flush();
+      numRows = checkRows.length;
+    }
+  }
+
+  var values = sheet.getRange(startRow, 1, numRows, maxCol).getValues();
   
   var list = [];
   // Loop from the very bottom row upwards
@@ -809,8 +827,70 @@ function doGet(e) {
 }
 
 /**
+ * Detects and removes any identical consecutive trailing duplicate rows from the array
+ * (e.g. accidental duplicates created by prior row shifts or bugs) so that only 1 instance remains.
+ */
+function cleanTrailingDuplicates(allRows, colMap, tz) {
+  if (!allRows || allRows.length < 2) return allRows;
+  while (allRows.length >= 2) {
+    var last = allRows[allRows.length - 1];
+    var prev = allRows[allRows.length - 2];
+    
+    var lastDate = formatComparableDate(last[colMap.DATE - 1], tz);
+    var prevDate = formatComparableDate(prev[colMap.DATE - 1], tz);
+    var lastDesc = String(last[colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+    var prevDesc = String(prev[colMap.DESCRIPTION - 1] || "").trim().toLowerCase();
+    var lastAmt = parseFloat(String(last[colMap.AMOUNT - 1] !== null && last[colMap.AMOUNT - 1] !== undefined ? last[colMap.AMOUNT - 1] : "").replace(/[^0-9.-]/g, ""));
+    var prevAmt = parseFloat(String(prev[colMap.AMOUNT - 1] !== null && prev[colMap.AMOUNT - 1] !== undefined ? prev[colMap.AMOUNT - 1] : "").replace(/[^0-9.-]/g, ""));
+    var lastCat = String(last[colMap.CATEGORY - 1] || "").trim().toLowerCase();
+    var prevCat = String(prev[colMap.CATEGORY - 1] || "").trim().toLowerCase();
+
+    var isDuplicate = (lastDate === prevDate && lastDesc === prevDesc && Math.abs(lastAmt - prevAmt) < 0.01 && lastCat === prevCat);
+    if (isDuplicate) {
+      allRows.pop();
+    } else {
+      break;
+    }
+  }
+  return allRows;
+}
+
+/**
+ * Run this function directly from the Google Apps Script editor (select 'removeTrailingDuplicates'
+ * and click 'Run') to immediately remove any duplicate trailing rows (leaving only 1 Isaiah).
+ */
+function removeTrailingDuplicates() {
+  var sheet = getTargetSheet();
+  var colMap = detectColumns(sheet);
+  var nextRow = findNextAvailableRow(sheet, colMap);
+  var headerRow = colMap.headerRow || 1;
+  var startRow = headerRow + 1;
+  var lastPopRow = nextRow - 1;
+  if (lastPopRow <= startRow) return "Sheet has no transactions to deduplicate.";
+  
+  var count = lastPopRow - startRow + 1;
+  var maxCol = colMap.maxCol || 6;
+  var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
+  var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
+  
+  var origLen = allRows.length;
+  cleanTrailingDuplicates(allRows, colMap, tz);
+  
+  if (allRows.length < origLen) {
+    sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+    var trailingRow = startRow + allRows.length;
+    var rowsToClear = lastPopRow - trailingRow + 1;
+    sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+    SpreadsheetApp.flush();
+    return "Removed " + (origLen - allRows.length) + " trailing duplicate row(s). Only 1 Isaiah remains.";
+  }
+  return "No trailing duplicate rows found.";
+}
+
+/**
  * Deletes the most recent matching transaction from the budget sheet.
- * Uses atomic array rewrite if deleting from the middle to close the gap without leaving holes.
+ * Compacts all subsequent rows up by 1 and automatically purges any duplicate trailing rows,
+ * guaranteeing zero row duplication.
  */
 function deleteLastMatchingTransaction(data) {
   var sheet = getTargetSheet(data ? data.date : null);
@@ -878,25 +958,29 @@ function deleteLastMatchingTransaction(data) {
   
   var clearedRow = startRow + deleteIndex;
   
-  if (deleteIndex === allRows.length - 1) {
-    // Deleting the very last populated row: just clear it
-    sheet.getRange(clearedRow, 1, 1, maxCol).clearContent();
-  } else {
-    // Deleting from the middle: remove from array, rewrite rows, and clear all trailing rows
-    allRows.splice(deleteIndex, 1);
+  // 1. Remove the target row
+  allRows.splice(deleteIndex, 1);
+  
+  // 2. Automatically purge any duplicate trailing rows (so only 1 instance remains)
+  cleanTrailingDuplicates(allRows, colMap, tz);
+
+  // 3. Write compacted rows back to the sheet
+  if (allRows.length > 0) {
     sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
     sheet.getRange(startRow, colMap.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(startRow, colMap.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
-    var trailingRow = startRow + allRows.length;
-    var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
-    sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
   }
+
+  // 4. Clear all trailing rows (including previous duplicate rows)
+  var trailingRow = startRow + allRows.length;
+  var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
+  sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
   
   SpreadsheetApp.flush();
   var updatedRecent = getRecentTransactionsFromSheet(sheet, colMap, 5);
   return { 
     success: true, 
-    message: "Transaction undone and row cleared.", 
+    message: "Transaction deleted and rows compacted.", 
     clearedRow: clearedRow,
     recentTransactions: updatedRecent
   };
