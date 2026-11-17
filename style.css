@@ -1654,8 +1654,9 @@ html, body {
   justify-content: center;
   align-items: center;
   padding: 12px 0 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: none;
   margin-top: 6px;
+  flex-shrink: 0;
 }
 
 .btn-see-all-transactions {
@@ -1664,7 +1665,7 @@ html, body {
   color: var(--accent-color);
   font-size: 13px;
   font-weight: 600;
-  padding: 8px 18px;
+  padding: 10px 20px;
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1673,6 +1674,8 @@ html, body {
   justify-content: center;
   gap: 6px;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .btn-see-all-transactions:hover {
@@ -1687,7 +1690,7 @@ html, body {
 
 /* Full-Screen Overlay & Sheet */
 .full-screen-overlay {
-  z-index: 400 !important;
+  z-index: 1045 !important;
   background: #111827;
   align-items: stretch;
   justify-content: stretch;
@@ -1926,7 +1929,7 @@ html, body {
 
 /* Filter Modal & Transaction Editor Z-Index */
 #allTxFilterModal {
-  z-index: 500 !important;
+  z-index: 1055 !important;
 }
 
 #allTxFilterModal .modal-sheet {
@@ -1934,5 +1937,5 @@ html, body {
 }
 
 #transactionEditorModal {
-  z-index: 600 !important;
+  z-index: 1065 !important;
 }

@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v75";
+  const APP_VERSION = "v76";
 
   // State
   const state = {
@@ -3293,20 +3293,26 @@
 
   function setupAllTxObserver() {
     if (allTxObserver) {
-      allTxObserver.disconnect();
+      try {
+        allTxObserver.disconnect();
+      } catch (e) {}
     }
     if (!elements.allTxSentinel) return;
 
-    allTxObserver = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        appendNextAllTxChunk();
-      }
-    }, {
-      root: elements.allTransactionsModal,
-      rootMargin: "200px"
-    });
+    try {
+      allTxObserver = new IntersectionObserver((entries) => {
+        if (entries[0] && entries[0].isIntersecting) {
+          appendNextAllTxChunk();
+        }
+      }, {
+        root: null,
+        rootMargin: "300px"
+      });
 
-    allTxObserver.observe(elements.allTxSentinel);
+      allTxObserver.observe(elements.allTxSentinel);
+    } catch (e) {
+      console.warn("IntersectionObserver init error:", e);
+    }
   }
 
   function resetAllTxFilters() {
@@ -3404,16 +3410,25 @@
   }
 
   function openAllTransactionsPage() {
-    loadAllTransactionsFromStorage();
-    setupAllTxObserver();
-    applyAllTxFiltersAndRender(true);
-
+    haptic(15);
     if (elements.allTransactionsModal) {
       elements.allTransactionsModal.classList.add("open");
     }
 
+    try {
+      loadAllTransactionsFromStorage();
+      setupAllTxObserver();
+      applyAllTxFiltersAndRender(true);
+    } catch (err) {
+      console.error("Error opening all transactions page:", err);
+    }
+
     // Background sync from sheet
-    fetchAllTransactionsFromSheet(false);
+    try {
+      fetchAllTransactionsFromSheet(false);
+    } catch (e) {
+      console.warn("fetchAllTransactionsFromSheet error:", e);
+    }
   }
 
   function closeAllTransactionsPage() {
@@ -3424,7 +3439,32 @@
 
   // Wiring All Transactions & Filter Listeners
   if (elements.btnSeeAllTransactions) {
-    elements.btnSeeAllTransactions.addEventListener("click", openAllTransactionsPage);
+    elements.btnSeeAllTransactions.addEventListener("click", (e) => {
+      e.preventDefault();
+      openAllTransactionsPage();
+    });
+  }
+
+  // Backup event delegation in case DOM event bubbling or dynamic container replacement occurs
+  if (elements.recentModal) {
+    elements.recentModal.addEventListener("click", (e) => {
+      const btn = e.target.closest("#btnSeeAllTransactions");
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        openAllTransactionsPage();
+      }
+    });
+  }
+
+  // Backup scroll-based chunk loading for All Transactions container
+  if (elements.allTransactionsContainer) {
+    elements.allTransactionsContainer.addEventListener("scroll", () => {
+      const el = elements.allTransactionsContainer;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 250) {
+        appendNextAllTxChunk();
+      }
+    }, { passive: true });
   }
 
   if (elements.btnBackToRecent) {
