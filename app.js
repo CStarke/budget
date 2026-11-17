@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v68";
+  const APP_VERSION = "v69";
 
   // State
   const state = {
@@ -991,6 +991,7 @@
             },
             body: JSON.stringify({
               action: "undo",
+              isUndo: true,
               row: item.row,
               date: item.date,
               description: item.description,

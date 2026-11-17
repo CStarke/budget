@@ -150,13 +150,15 @@ function formatComparableDate(val, tz) {
   }
   var dt = (val instanceof Date) ? val : parseDateInput(val);
   if (isNaN(dt.getTime())) return "";
+  // Anchor at noon to prevent any timezone offset from shifting calendar day
+  var safeDt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0);
   if (tz && typeof Utilities !== "undefined" && Utilities.formatDate) {
-    return Utilities.formatDate(dt, tz, "yyyy-MM-dd");
+    return Utilities.formatDate(safeDt, tz, "yyyy-MM-dd");
   }
-  var yr = dt.getFullYear();
-  var mo = String(dt.getMonth() + 1);
+  var yr = safeDt.getFullYear();
+  var mo = String(safeDt.getMonth() + 1);
   if (mo.length === 1) mo = "0" + mo;
-  var dy = String(dt.getDate());
+  var dy = String(safeDt.getDate());
   if (dy.length === 1) dy = "0" + dy;
   return yr + "-" + mo + "-" + dy;
 }
@@ -245,6 +247,9 @@ function getRecentTransactionsFromSheet(sheet, limit) {
       var trailingRow = startRow + checkRows.length;
       var rowsToClear = lastPopRow - trailingRow + 1;
       sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+      for (var k = 0; k < rowsToClear; k++) {
+        try { sheet.deleteRow(trailingRow); } catch (e) {}
+      }
       clearTransactionBorders(sheet);
       SpreadsheetApp.flush();
     }
@@ -337,7 +342,8 @@ function parseDateInput(inputStr) {
     var year = parseInt(parts[0], 10);
     var month = parseInt(parts[1], 10) - 1;
     var day = parseInt(parts[2], 10);
-    return new Date(year, month, day);
+    // Anchor at noon (12:00:00) so any timezone offset never changes the calendar date
+    return new Date(year, month, day, 12, 0, 0);
   }
   
   var parsed = new Date(inputStr);
@@ -630,6 +636,7 @@ function deleteLastMatchingTransaction(data) {
   var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
   var targetDateComp = formatComparableDate(data.date, tz);
   var hintRow = data.row;
+  var isUndo = (data.action === "undo" || data.isUndo === true);
   
   var count = lastPopRow - startRow + 1;
   var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
@@ -691,8 +698,8 @@ function deleteLastMatchingTransaction(data) {
     }
   }
 
-  // Fallback 3: if no criteria provided (pure undo), delete bottom row
-  if (deleteIndex === -1 && allRows.length > 0 && !targetDesc && isNaN(targetAmt)) {
+  // Fallback 3: if this is an Undo action or no identifying criteria, delete bottom row
+  if (deleteIndex === -1 && allRows.length > 0 && (isUndo || (!targetDesc && isNaN(targetAmt)))) {
     deleteIndex = allRows.length - 1;
   }
   
@@ -713,6 +720,9 @@ function deleteLastMatchingTransaction(data) {
   var trailingRow = startRow + allRows.length;
   var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
   sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+  for (var d = 0; d < rowsToClear; d++) {
+    try { sheet.deleteRow(trailingRow); } catch (e) {}
+  }
   clearTransactionBorders(sheet);
   SpreadsheetApp.flush();
   return { 
