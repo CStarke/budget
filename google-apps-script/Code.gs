@@ -140,7 +140,7 @@ function findNextAvailableRow(sheet) {
 function formatComparableDate(val, tz) {
   if (!val) return "";
   if (typeof val === "string") {
-    var m = val.trim().match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+    var m = val.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) {
       var y = m[1];
       var mon = String(m[2]).length === 1 ? "0" + m[2] : m[2];
@@ -245,9 +245,6 @@ function getRecentTransactionsFromSheet(sheet, limit) {
       var trailingRow = startRow + checkRows.length;
       var rowsToClear = lastPopRow - trailingRow + 1;
       sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
-      for (var k = 0; k < rowsToClear; k++) {
-        try { sheet.deleteRow(trailingRow); } catch (e) {}
-      }
       clearTransactionBorders(sheet);
       SpreadsheetApp.flush();
     }
@@ -670,6 +667,34 @@ function deleteLastMatchingTransaction(data) {
       }
     }
   }
+
+  // Fallback 1: match without date if description and amount match
+  if (deleteIndex === -1 && targetDateComp) {
+    for (var j = allRows.length - 1; j >= 0; j--) {
+      var dVal = String(allRows[j][descCol] || "").trim().toLowerCase();
+      var aVal = parseFloat(String(allRows[j][amtCol] || "").replace(/[^0-9.-]/g, ""));
+      var mDesc = (!targetDesc || dVal === targetDesc || (targetDesc === "untitled" && !dVal));
+      var mAmt = (isNaN(targetAmt) || Math.abs(aVal - targetAmt) < 0.01);
+      if (mDesc && mAmt) {
+        deleteIndex = j;
+        break;
+      }
+    }
+  }
+
+  // Fallback 2: if hintRow is valid and amounts match
+  if (deleteIndex === -1 && hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
+    var hIdx2 = hintRow - startRow;
+    var hAmt2 = parseFloat(String(allRows[hIdx2][amtCol] || "").replace(/[^0-9.-]/g, ""));
+    if (isNaN(targetAmt) || Math.abs(hAmt2 - targetAmt) < 0.01) {
+      deleteIndex = hIdx2;
+    }
+  }
+
+  // Fallback 3: if no criteria provided (pure undo), delete bottom row
+  if (deleteIndex === -1 && allRows.length > 0 && !targetDesc && isNaN(targetAmt)) {
+    deleteIndex = allRows.length - 1;
+  }
   
   if (deleteIndex === -1) {
     return { success: false, error: "Matching transaction not found in sheet." };
@@ -688,10 +713,6 @@ function deleteLastMatchingTransaction(data) {
   var trailingRow = startRow + allRows.length;
   var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
   sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
-  for (var d = 0; d < rowsToClear; d++) {
-    try { sheet.deleteRow(trailingRow); } catch (e) {}
-  }
-  
   clearTransactionBorders(sheet);
   SpreadsheetApp.flush();
   return { 
@@ -878,4 +899,3 @@ function doPost(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
-

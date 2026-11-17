@@ -662,8 +662,19 @@ html, body {
   flex-direction: column;
   gap: 10px;
   margin-top: 8px;
-  max-height: 52vh;
+  max-height: none;
   overflow-y: auto;
+}
+
+#recentModal .modal-sheet {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#recentModal .recent-list {
+  flex: 1;
+  max-height: none;
 }
 
 .recent-item {
@@ -689,7 +700,7 @@ html, body {
 .recent-item:active {
   transform: scale(0.985);
   background: rgba(255, 255, 255, 0.08);
-  border-color: var(--accent-emerald);
+  border-color: var(--accent-color);
 }
 
 .recent-info {

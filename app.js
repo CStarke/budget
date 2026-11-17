@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v67";
+  const APP_VERSION = "v68";
 
   // State
   const state = {
@@ -1171,6 +1171,11 @@
       showToast(`Added ${formattedAmount} to ${state.sheetName || "Sheet"}!`, "success");
       addRecentTransaction(payload);
       resetFormFields();
+
+      // Refresh recent transactions to fetch actual row numbers from sheet
+      setTimeout(() => {
+        fetchRecentTransactionsFromSheet();
+      }, 1200);
 
       // Trigger queue process in case older items exist
       if (getOfflineQueue().length > 0) {
