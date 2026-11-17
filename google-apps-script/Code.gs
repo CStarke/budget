@@ -276,7 +276,8 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
   for (var s = 0; s < sheets.length; s++) {
     var sh = sheets[s];
     var shName = sh.getName();
-    if (shName.indexOf(CONFIG.SHEET_NAME_PREFIX) !== 0) continue;
+    // Only process sheets named "Budget YYYY" or the exact fallback/primary sheet
+    if (!/^Budget \d{4}$/.test(shName) && shName !== CONFIG.SHEET_NAME_PREFIX.trim() && shName !== CONFIG.FALLBACK_SHEET_NAME) continue;
 
     var lastRow = sh.getLastRow();
     if (lastRow < startRow) continue;
@@ -302,6 +303,9 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
       var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
       var amt = parseFloat(cleanAmt);
       if (isNaN(amt)) amt = 0.00;
+
+      // Skip phantom empty rows that might have a date or formatting but no actual transaction data
+      if (!desc && !cat && !fromVal && !toVal && amt === 0) continue;
 
       var dateStr = "";
       var dateObj = null;
