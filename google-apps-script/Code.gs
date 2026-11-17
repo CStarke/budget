@@ -116,20 +116,20 @@ function getOptionsFromCategoryTab(categorySheet) {
 }
 
 /**
- * Finds the next truly empty row in transaction columns A-F.
- * Ignores running balance formula columns in columns G+.
+ * Finds the next available row using Column A (Date) as the sole source of truth.
+ * A row contains a transaction if and only if Column A has a date.
  */
 function findNextAvailableRow(sheet) {
   var lastRow = sheet.getLastRow();
   var startRow = CONFIG.START_ROW;
   if (lastRow < startRow) return startRow;
 
-  var values = sheet.getRange(startRow, 1, lastRow - startRow + 1, CONFIG.MAX_COL).getValues();
-  for (var r = values.length - 1; r >= 0; r--) {
-    var hasContent = values[r].some(function(cell) {
-      return String(cell !== null && cell !== undefined ? cell : "").trim() !== "";
-    });
-    if (hasContent) return startRow + r + 1;
+  var colAValues = sheet.getRange(startRow, CONFIG.COL.DATE, lastRow - startRow + 1, 1).getValues();
+  for (var r = colAValues.length - 1; r >= 0; r--) {
+    var cell = colAValues[r][0];
+    if (cell !== null && cell !== undefined && String(cell).trim() !== "") {
+      return startRow + r + 1;
+    }
   }
   return startRow;
 }
@@ -150,15 +150,13 @@ function formatComparableDate(val, tz) {
   }
   var dt = (val instanceof Date) ? val : parseDateInput(val);
   if (isNaN(dt.getTime())) return "";
-  // Anchor at noon to prevent any timezone offset from shifting calendar day
-  var safeDt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 12, 0, 0);
   if (tz && typeof Utilities !== "undefined" && Utilities.formatDate) {
-    return Utilities.formatDate(safeDt, tz, "yyyy-MM-dd");
+    return Utilities.formatDate(dt, tz, "yyyy-MM-dd");
   }
-  var yr = safeDt.getFullYear();
-  var mo = String(safeDt.getMonth() + 1);
+  var yr = dt.getFullYear();
+  var mo = String(dt.getMonth() + 1);
   if (mo.length === 1) mo = "0" + mo;
-  var dy = String(safeDt.getDate());
+  var dy = String(dt.getDate());
   if (dy.length === 1) dy = "0" + dy;
   return yr + "-" + mo + "-" + dy;
 }
@@ -191,39 +189,6 @@ function clearTransactionBorders(sheet) {
 var clearAmountColumnBorders = clearTransactionBorders;
 
 /**
- * Detects and removes any identical consecutive trailing duplicate rows from the array.
- */
-function cleanTrailingDuplicates(allRows, tz) {
-  if (!allRows || allRows.length < 2) return allRows;
-  var dateCol = CONFIG.COL.DATE - 1;
-  var descCol = CONFIG.COL.DESCRIPTION - 1;
-  var catCol = CONFIG.COL.CATEGORY - 1;
-  var amtCol = CONFIG.COL.AMOUNT - 1;
-
-  while (allRows.length >= 2) {
-    var last = allRows[allRows.length - 1];
-    var prev = allRows[allRows.length - 2];
-    
-    var lastDate = formatComparableDate(last[dateCol], tz);
-    var prevDate = formatComparableDate(prev[dateCol], tz);
-    var lastDesc = String(last[descCol] || "").trim().toLowerCase();
-    var prevDesc = String(prev[descCol] || "").trim().toLowerCase();
-    var lastAmt = parseFloat(String(last[amtCol] !== null && last[amtCol] !== undefined ? last[amtCol] : "").replace(/[^0-9.-]/g, ""));
-    var prevAmt = parseFloat(String(prev[amtCol] !== null && prev[amtCol] !== undefined ? prev[amtCol] : "").replace(/[^0-9.-]/g, ""));
-    var lastCat = String(last[catCol] || "").trim().toLowerCase();
-    var prevCat = String(prev[catCol] || "").trim().toLowerCase();
-
-    var isDuplicate = (lastDate === prevDate && lastDesc === prevDesc && Math.abs(lastAmt - prevAmt) < 0.01 && lastCat === prevCat);
-    if (isDuplicate) {
-      allRows.pop();
-    } else {
-      break;
-    }
-  }
-  return allRows;
-}
-
-/**
  * Retrieves the most recent N transactions from the budget sheet.
  */
 function getRecentTransactionsFromSheet(sheet, limit) {
@@ -235,31 +200,11 @@ function getRecentTransactionsFromSheet(sheet, limit) {
   var maxCol = CONFIG.MAX_COL;
   var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
 
-  // Automatically detect and clean any trailing duplicate rows in the sheet
   var nextRow = findNextAvailableRow(sheet);
   var lastPopRow = nextRow - 1;
-  if (lastPopRow > startRow) {
-    var checkRows = sheet.getRange(startRow, 1, lastPopRow - startRow + 1, maxCol).getValues();
-    var beforeLen = checkRows.length;
-    cleanTrailingDuplicates(checkRows, tz);
-    if (checkRows.length < beforeLen) {
-      sheet.getRange(startRow, 1, checkRows.length, maxCol).setValues(checkRows);
-      var trailingRow = startRow + checkRows.length;
-      var rowsToClear = lastPopRow - trailingRow + 1;
-      sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
-      for (var k = 0; k < rowsToClear; k++) {
-        try { sheet.deleteRow(trailingRow); } catch (e) {}
-      }
-      clearTransactionBorders(sheet);
-      SpreadsheetApp.flush();
-    }
-  }
+  if (lastPopRow < startRow) return [];
 
-  var curNextRow = findNextAvailableRow(sheet);
-  var curLastPop = curNextRow - 1;
-  if (curLastPop < startRow) return [];
-
-  var numRows = curLastPop - startRow + 1;
+  var numRows = lastPopRow - startRow + 1;
   var values = sheet.getRange(startRow, 1, numRows, maxCol).getValues();
   
   var list = [];
@@ -272,10 +217,8 @@ function getRecentTransactionsFromSheet(sheet, limit) {
 
   for (var i = values.length - 1; i >= 0; i--) {
     var rowValues = values[i];
-    var hasContent = rowValues.some(function(cell) {
-      return String(cell !== null && cell !== undefined ? cell : "").trim() !== "";
-    });
-    if (!hasContent) continue;
+    var rawDate = rowValues[dateCol];
+    if (rawDate === null || rawDate === undefined || String(rawDate).trim() === "") continue;
     
     var desc = String(rowValues[descCol] || "").trim();
     var cat = String(rowValues[catCol] || "").trim();
@@ -342,8 +285,7 @@ function parseDateInput(inputStr) {
     var year = parseInt(parts[0], 10);
     var month = parseInt(parts[1], 10) - 1;
     var day = parseInt(parts[2], 10);
-    // Anchor at noon (12:00:00) so any timezone offset never changes the calendar date
-    return new Date(year, month, day, 12, 0, 0);
+    return new Date(year, month, day);
   }
   
   var parsed = new Date(inputStr);
@@ -478,23 +420,28 @@ function editTransaction(data) {
 
   if (hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
     var idx = hintRow - startRow;
-    var rowDesc = String(allRows[idx][descCol] || "").trim().toLowerCase();
-    var rowAmt = parseFloat(String(allRows[idx][amtCol] || "").replace(/[^0-9.-]/g, ""));
-    var rowDateComp = formatComparableDate(allRows[idx][dateCol], tz);
-    
-    var descMatch = (!origDesc || rowDesc === origDesc || (origDesc === "untitled" && !rowDesc));
-    var amtMatch = (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01);
-    var dateMatch = (!origDateComp || rowDateComp === origDateComp);
-    if (descMatch && amtMatch && dateMatch) {
-      targetRow = hintRow;
+    var idxRawDate = allRows[idx][dateCol];
+    if (idxRawDate !== null && idxRawDate !== undefined && String(idxRawDate).trim() !== "") {
+      var rowDesc = String(allRows[idx][descCol] || "").trim().toLowerCase();
+      var rowAmt = parseFloat(String(allRows[idx][amtCol] || "").replace(/[^0-9.-]/g, ""));
+      var rowDateComp = formatComparableDate(idxRawDate, tz);
+      
+      var descMatch = (!origDesc || rowDesc === origDesc || (origDesc === "untitled" && !rowDesc));
+      var amtMatch = (isNaN(origAmt) || Math.abs(rowAmt - origAmt) < 0.01);
+      var dateMatch = (!origDateComp || rowDateComp === origDateComp);
+      if (descMatch && amtMatch && dateMatch) {
+        targetRow = hintRow;
+      }
     }
   }
 
   if (targetRow === -1) {
     for (var i = allRows.length - 1; i >= 0; i--) {
+      var rRawDate = allRows[i][dateCol];
+      if (rRawDate === null || rRawDate === undefined || String(rRawDate).trim() === "") continue;
       var rDesc = String(allRows[i][descCol] || "").trim().toLowerCase();
       var rAmt = parseFloat(String(allRows[i][amtCol] || "").replace(/[^0-9.-]/g, ""));
-      var rDateComp = formatComparableDate(allRows[i][dateCol], tz);
+      var rDateComp = formatComparableDate(rRawDate, tz);
       
       var matchDesc = (!origDesc || rDesc === origDesc || (origDesc === "untitled" && !rDesc));
       var matchAmt = (isNaN(origAmt) || Math.abs(rAmt - origAmt) < 0.01);
@@ -636,7 +583,6 @@ function deleteLastMatchingTransaction(data) {
   var tz = (sheet.getParent && sheet.getParent()) ? sheet.getParent().getSpreadsheetTimeZone() : (Session.getScriptTimeZone() || "GMT");
   var targetDateComp = formatComparableDate(data.date, tz);
   var hintRow = data.row;
-  var isUndo = (data.action === "undo" || data.isUndo === true);
   
   var count = lastPopRow - startRow + 1;
   var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
@@ -646,23 +592,30 @@ function deleteLastMatchingTransaction(data) {
   var descCol = CONFIG.COL.DESCRIPTION - 1;
   var amtCol = CONFIG.COL.AMOUNT - 1;
 
+  // 1. If hintRow is provided and valid, verify and use it
   if (hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
     var hIdx = hintRow - startRow;
-    var hDesc = String(allRows[hIdx][descCol] || "").trim().toLowerCase();
-    var hAmt = parseFloat(String(allRows[hIdx][amtCol] || "").replace(/[^0-9.-]/g, ""));
-    var hDateComp = formatComparableDate(allRows[hIdx][dateCol], tz);
-    if ((!targetDesc || hDesc === targetDesc || (targetDesc === "untitled" && !hDesc)) &&
-        (isNaN(targetAmt) || Math.abs(hAmt - targetAmt) < 0.01) &&
-        (!targetDateComp || hDateComp === targetDateComp)) {
-      deleteIndex = hIdx;
+    var hRawDate = allRows[hIdx][dateCol];
+    if (hRawDate !== null && hRawDate !== undefined && String(hRawDate).trim() !== "") {
+      var hDesc = String(allRows[hIdx][descCol] || "").trim().toLowerCase();
+      var hAmt = parseFloat(String(allRows[hIdx][amtCol] || "").replace(/[^0-9.-]/g, ""));
+      var hDateComp = formatComparableDate(hRawDate, tz);
+      if ((!targetDesc || hDesc === targetDesc || (targetDesc === "untitled" && !hDesc)) &&
+          (isNaN(targetAmt) || Math.abs(hAmt - targetAmt) < 0.01) &&
+          (!targetDateComp || hDateComp === targetDateComp)) {
+        deleteIndex = hIdx;
+      }
     }
   }
   
+  // 2. Scan bottom-up for matching transaction (Column A date is source of truth)
   if (deleteIndex === -1) {
     for (var i = allRows.length - 1; i >= 0; i--) {
+      var rawDateI = allRows[i][dateCol];
+      if (rawDateI === null || rawDateI === undefined || String(rawDateI).trim() === "") continue;
       var descVal = String(allRows[i][descCol] || "").trim().toLowerCase();
       var amtVal = parseFloat(String(allRows[i][amtCol] || "").replace(/[^0-9.-]/g, ""));
-      var dateComp = formatComparableDate(allRows[i][dateCol], tz);
+      var dateComp = formatComparableDate(rawDateI, tz);
       
       var matchDesc = (!targetDesc || descVal === targetDesc || (targetDesc === "untitled" && !descVal));
       var matchAmt = (isNaN(targetAmt) || Math.abs(amtVal - targetAmt) < 0.01);
@@ -675,9 +628,11 @@ function deleteLastMatchingTransaction(data) {
     }
   }
 
-  // Fallback 1: match without date if description and amount match
-  if (deleteIndex === -1 && targetDateComp) {
+  // 3. Fallback: match by description and amount (ignoring date)
+  if (deleteIndex === -1 && (!isNaN(targetAmt) || targetDesc)) {
     for (var j = allRows.length - 1; j >= 0; j--) {
+      var rawDateJ = allRows[j][dateCol];
+      if (rawDateJ === null || rawDateJ === undefined || String(rawDateJ).trim() === "") continue;
       var dVal = String(allRows[j][descCol] || "").trim().toLowerCase();
       var aVal = parseFloat(String(allRows[j][amtCol] || "").replace(/[^0-9.-]/g, ""));
       var mDesc = (!targetDesc || dVal === targetDesc || (targetDesc === "untitled" && !dVal));
@@ -689,18 +644,15 @@ function deleteLastMatchingTransaction(data) {
     }
   }
 
-  // Fallback 2: if hintRow is valid and amounts match
-  if (deleteIndex === -1 && hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
-    var hIdx2 = hintRow - startRow;
-    var hAmt2 = parseFloat(String(allRows[hIdx2][amtCol] || "").replace(/[^0-9.-]/g, ""));
-    if (isNaN(targetAmt) || Math.abs(hAmt2 - targetAmt) < 0.01) {
-      deleteIndex = hIdx2;
+  // 4. Fallback: if no criteria matched, delete bottom-most row with populated Date in Column A
+  if (deleteIndex === -1) {
+    for (var k = allRows.length - 1; k >= 0; k--) {
+      var rawDateK = allRows[k][dateCol];
+      if (rawDateK !== null && rawDateK !== undefined && String(rawDateK).trim() !== "") {
+        deleteIndex = k;
+        break;
+      }
     }
-  }
-
-  // Fallback 3: if this is an Undo action or no identifying criteria, delete bottom row
-  if (deleteIndex === -1 && allRows.length > 0 && (isUndo || (!targetDesc && isNaN(targetAmt)))) {
-    deleteIndex = allRows.length - 1;
   }
   
   if (deleteIndex === -1) {
@@ -709,7 +661,6 @@ function deleteLastMatchingTransaction(data) {
   
   var clearedRow = startRow + deleteIndex;
   allRows.splice(deleteIndex, 1);
-  cleanTrailingDuplicates(allRows, tz);
 
   if (allRows.length > 0) {
     sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
@@ -720,9 +671,6 @@ function deleteLastMatchingTransaction(data) {
   var trailingRow = startRow + allRows.length;
   var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
   sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
-  for (var d = 0; d < rowsToClear; d++) {
-    try { sheet.deleteRow(trailingRow); } catch (e) {}
-  }
   clearTransactionBorders(sheet);
   SpreadsheetApp.flush();
   return { 
