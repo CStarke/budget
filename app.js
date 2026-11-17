@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v78";
+  const APP_VERSION = "v79";
 
   // State
   const state = {
@@ -3035,13 +3035,6 @@
 
   function matchesFilter(tx) {
     if (!tx) return false;
-
-    // Discard empty phantom rows that have no description, category, amount, or accounts
-    const hasDesc = Boolean(tx.description && tx.description !== "Untitled" && tx.description.trim() !== "");
-    const hasCat = Boolean(tx.category && tx.category.trim() !== "");
-    const hasAmt = Boolean(tx.amount !== undefined && tx.amount !== null && !isNaN(parseFloat(tx.amount)) && parseFloat(tx.amount) !== 0);
-    const hasAccount = Boolean((tx.from && tx.from.trim()) || (tx.to && tx.to.trim()));
-    if (!hasDesc && !hasCat && !hasAmt && !hasAccount) return false;
 
     // 1. Text search
     if (allTxFilterState.search) {

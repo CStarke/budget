@@ -304,9 +304,6 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
       var amt = parseFloat(cleanAmt);
       if (isNaN(amt)) amt = 0.00;
 
-      // Skip phantom empty rows that might have a date or formatting but no actual transaction data
-      if (!desc && !cat && !fromVal && !toVal && amt === 0) continue;
-
       var dateStr = "";
       var dateObj = null;
       if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
