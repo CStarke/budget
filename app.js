@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v74";
+  const APP_VERSION = "v75";
 
   // State
   const state = {
@@ -1403,25 +1403,60 @@
     });
   }
 
-  // Tap Logo to Force App Update & Refresh
+  // Clean URL query parameters if loaded via cache-busting reload
+  if (window.location.search && window.location.search.includes("v=")) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (e) {}
+  }
+
+  // Tap Logo to Force App Update & Refresh (Purges cache & hard-refreshes)
   async function forceAppUpdate() {
     haptic(15);
     if (!navigator.onLine) {
       showToast("Offline: running latest saved version.", "info");
       return;
     }
-    showToast("Checking for updates...", "info");
+    showToast("Purging cache & checking for updates...", "info");
+
+    let refreshing = false;
+    const triggerReload = () => {
+      if (refreshing) return;
+      refreshing = true;
+      const targetUrl = window.location.origin + window.location.pathname + `?v=${Date.now()}`;
+      window.location.replace(targetUrl);
+    };
+
+    // 1. Purge Cache Storage to eliminate stale app-shell files
+    if ("caches" in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) {
+        console.warn("Could not purge caches:", e);
+      }
+    }
+
+    // 2. Check Service Worker update & listen for controllerchange
     if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        triggerReload();
+      });
+
       try {
         const reg = await navigator.serviceWorker.getRegistration();
         if (reg) {
           await reg.update();
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Could not update service worker:", e);
+      }
     }
+
+    // 3. Fallback: reload after 700ms if controllerchange didn't fire
     setTimeout(() => {
-      window.location.reload();
-    }, 400);
+      triggerReload();
+    }, 700);
   }
 
   if (elements.brandLogo) {
