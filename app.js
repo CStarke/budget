@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v85";
+  const APP_VERSION = "v86";
 
   // State
   const state = {
@@ -1165,7 +1165,9 @@
       state.selectedTo = state.defaults.to || "";
       updateAllButtons();
       setDate(getFormattedDate(new Date()));
-      elements.amountInput.focus();
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
     }
 
     // Offline check: queue immediately if offline
@@ -1842,6 +1844,23 @@
       haptic(15);
       elements.btnWheelReset.blur();
       resetWheelToBlank();
+
+      // Reset Dollar Amount to 0 (cleared)
+      currentCents = 0;
+      if (elements.amountInput) {
+        elements.amountInput.value = "";
+      }
+
+      // Reset Category, From, To to default values
+      state.selectedCategory = state.defaults.category || "";
+      state.selectedFrom = state.defaults.from || "";
+      state.selectedTo = state.defaults.to || "";
+      updateAllButtons();
+
+      // Clear description
+      if (elements.descInput) {
+        elements.descInput.value = "";
+      }
     });
   }
 
