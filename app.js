@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v84";
+  const APP_VERSION = "v85";
 
   // State
   const state = {
@@ -158,6 +158,7 @@
     filterFromText: document.getElementById("filterFromText"),
     btnFilterTo: document.getElementById("btnFilterTo"),
     filterToText: document.getElementById("filterToText"),
+    filterHideSetup: document.getElementById("filterHideSetup"),
     btnApplyAllTxFilters: document.getElementById("btnApplyAllTxFilters"),
     btnResetAllTxFilters: document.getElementById("btnResetAllTxFilters")
   };
@@ -2912,7 +2913,8 @@
     maxCents: 0,
     category: "",
     from: "",
-    to: ""
+    to: "",
+    hideSetup: true
   };
 
   const filterDraftState = {
@@ -2922,7 +2924,8 @@
     maxCents: 0,
     category: "",
     from: "",
-    to: ""
+    to: "",
+    hideSetup: true
   };
 
   function loadAllTransactionsFromStorage() {
@@ -3032,6 +3035,13 @@
   function matchesFilter(tx) {
     if (!tx) return false;
 
+    // 0. Hide Setup Transactions
+    if (allTxFilterState.hideSetup) {
+      if ((tx.description || "").trim().toLowerCase() === "setup") {
+        return false;
+      }
+    }
+
     // 1. Text search
     if (allTxFilterState.search) {
       const q = allTxFilterState.search.toLowerCase().trim();
@@ -3110,7 +3120,8 @@
       allTxFilterState.maxCents > 0 ||
       (allTxFilterState.category && allTxFilterState.category !== "(All)" && allTxFilterState.category !== "(None)") ||
       (allTxFilterState.from && allTxFilterState.from !== "(All)" && allTxFilterState.from !== "(None)") ||
-      (allTxFilterState.to && allTxFilterState.to !== "(All)" && allTxFilterState.to !== "(None)")
+      (allTxFilterState.to && allTxFilterState.to !== "(All)" && allTxFilterState.to !== "(None)") ||
+      !allTxFilterState.hideSetup
     );
   }
 
@@ -3275,6 +3286,7 @@
     allTxFilterState.category = "";
     allTxFilterState.from = "";
     allTxFilterState.to = "";
+    allTxFilterState.hideSetup = true;
     syncDraftWithActiveFilter();
     updateFilterModalUI();
     applyAllTxFiltersAndRender(true);
@@ -3299,6 +3311,7 @@
     filterDraftState.category = allTxFilterState.category;
     filterDraftState.from = allTxFilterState.from;
     filterDraftState.to = allTxFilterState.to;
+    filterDraftState.hideSetup = allTxFilterState.hideSetup !== false;
   }
 
   function updateFilterModalUI() {
@@ -3345,6 +3358,10 @@
       elements.filterToText.textContent = filterDraftState.to || "(None)";
       elements.filterToText.classList.toggle("placeholder", !filterDraftState.to || filterDraftState.to === "(None)");
     }
+
+    if (elements.filterHideSetup) {
+      elements.filterHideSetup.checked = filterDraftState.hideSetup !== false;
+    }
   }
 
   function applyFilterModal() {
@@ -3355,6 +3372,7 @@
     allTxFilterState.category = filterDraftState.category;
     allTxFilterState.from = filterDraftState.from;
     allTxFilterState.to = filterDraftState.to;
+    allTxFilterState.hideSetup = filterDraftState.hideSetup !== false;
 
     closeAllTxFilterModal();
     applyAllTxFiltersAndRender(true);
@@ -3552,6 +3570,13 @@
           elements.filterToText.classList.toggle("placeholder", !choice);
         }
       }, filterDraftState.to || "(None)");
+    });
+  }
+
+  // Hide Setup Transactions toggle in Filter Modal
+  if (elements.filterHideSetup) {
+    elements.filterHideSetup.addEventListener("change", (e) => {
+      filterDraftState.hideSetup = e.target.checked;
     });
   }
 

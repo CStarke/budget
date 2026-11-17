@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=v84">
+  <link rel="stylesheet" href="style.css?v=v85">
 
   <!-- Theme Color Pre-render Script (Zero Flash) -->
   <script>
@@ -313,7 +313,7 @@
         </button>
 
         <div class="settings-version-footer" style="text-align: right; width: 100%; margin-top: 10px; margin-bottom: -8px;">
-          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v84</span>
+          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v85</span>
         </div>
       </div>
     </div>
@@ -707,6 +707,18 @@
           </div>
         </div>
 
+        <!-- Hide Setup Transactions Toggle Row -->
+        <div class="settings-toggle-row" style="margin-top: 16px; padding: 4px 0;">
+          <div class="settings-toggle-info">
+            <span class="settings-toggle-title">Hide "Setup" Transactions</span>
+            <span class="settings-toggle-desc">Exclude sheet transfer balance adjustments</span>
+          </div>
+          <label class="toggle-switch" for="filterHideSetup">
+            <input type="checkbox" id="filterHideSetup" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
         <!-- Action Buttons -->
         <div style="display: flex; gap: 8px; margin-top: 22px;">
           <button type="button" class="btn-save-settings" id="btnApplyAllTxFilters" style="flex: 2; margin: 0;">Apply Filters</button>
@@ -716,6 +728,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=v84"></script>
+  <script src="app.js?v=v85"></script>
 </body>
 </html>
