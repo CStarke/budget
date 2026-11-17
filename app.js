@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v80";
+  const APP_VERSION = "v81";
 
   // State
   const state = {
@@ -138,10 +138,6 @@
     allTxSearchInput: document.getElementById("allTxSearchInput"),
     btnClearAllTxSearch: document.getElementById("btnClearAllTxSearch"),
     btnOpenAllTxFilter: document.getElementById("btnOpenAllTxFilter"),
-    filterActiveDot: document.getElementById("filterActiveDot"),
-    allTxActiveFilterBar: document.getElementById("allTxActiveFilterBar"),
-    allTxFilterSummaryText: document.getElementById("allTxFilterSummaryText"),
-    btnClearFiltersMini: document.getElementById("btnClearFiltersMini"),
     allTransactionsContainer: document.getElementById("allTransactionsContainer"),
     allTxSentinel: document.getElementById("allTxSentinel"),
 
@@ -3123,44 +3119,6 @@
     if (elements.btnOpenAllTxFilter) {
       elements.btnOpenAllTxFilter.classList.toggle("has-filter", hasFilter);
     }
-    if (elements.filterActiveDot) {
-      elements.filterActiveDot.style.display = hasFilter ? "block" : "none";
-    }
-
-    if (elements.allTxActiveFilterBar) {
-      if (hasFilter) {
-        elements.allTxActiveFilterBar.style.display = "flex";
-        const tags = [];
-        if (allTxFilterState.startDate && allTxFilterState.endDate) {
-          tags.push(`${formatHumanDate(allTxFilterState.startDate)} - ${formatHumanDate(allTxFilterState.endDate)}`);
-        } else if (allTxFilterState.startDate) {
-          tags.push(`After ${formatHumanDate(allTxFilterState.startDate)}`);
-        } else if (allTxFilterState.endDate) {
-          tags.push(`Before ${formatHumanDate(allTxFilterState.endDate)}`);
-        }
-
-        if (allTxFilterState.minCents > 0 && allTxFilterState.maxCents > 0) {
-          tags.push(`$${formatCentsWithCommas(allTxFilterState.minCents)} - $${formatCentsWithCommas(allTxFilterState.maxCents)}`);
-        } else if (allTxFilterState.minCents > 0) {
-          tags.push(`>$${formatCentsWithCommas(allTxFilterState.minCents)}`);
-        } else if (allTxFilterState.maxCents > 0) {
-          tags.push(`<$${formatCentsWithCommas(allTxFilterState.maxCents)}`);
-        }
-
-        if (allTxFilterState.category && allTxFilterState.category !== "(All)") {
-          tags.push(allTxFilterState.category);
-        }
-        if (allTxFilterState.from && allTxFilterState.from !== "(All)") {
-          tags.push(`From: ${allTxFilterState.from}`);
-        }
-        if (allTxFilterState.to && allTxFilterState.to !== "(All)") {
-          tags.push(`To: ${allTxFilterState.to}`);
-        }
-        elements.allTxFilterSummaryText.textContent = `Filtered by: ${tags.join(", ")}`;
-      } else {
-        elements.allTxActiveFilterBar.style.display = "none";
-      }
-    }
   }
 
   function applyAllTxFiltersAndRender(resetScroll = true) {
@@ -3373,16 +3331,16 @@
     }
 
     if (elements.filterCatText) {
-      elements.filterCatText.textContent = filterDraftState.category || "(All)";
-      elements.filterCatText.classList.toggle("placeholder", !filterDraftState.category || filterDraftState.category === "(All)");
+      elements.filterCatText.textContent = filterDraftState.category || "(None)";
+      elements.filterCatText.classList.toggle("placeholder", !filterDraftState.category || filterDraftState.category === "(None)");
     }
     if (elements.filterFromText) {
-      elements.filterFromText.textContent = filterDraftState.from || "(All)";
-      elements.filterFromText.classList.toggle("placeholder", !filterDraftState.from || filterDraftState.from === "(All)");
+      elements.filterFromText.textContent = filterDraftState.from || "(None)";
+      elements.filterFromText.classList.toggle("placeholder", !filterDraftState.from || filterDraftState.from === "(None)");
     }
     if (elements.filterToText) {
-      elements.filterToText.textContent = filterDraftState.to || "(All)";
-      elements.filterToText.classList.toggle("placeholder", !filterDraftState.to || filterDraftState.to === "(All)");
+      elements.filterToText.textContent = filterDraftState.to || "(None)";
+      elements.filterToText.classList.toggle("placeholder", !filterDraftState.to || filterDraftState.to === "(None)");
     }
   }
 
@@ -3490,10 +3448,6 @@
     elements.btnResetAllTxFilters.addEventListener("click", resetAllTxFilters);
   }
 
-  if (elements.btnClearFiltersMini) {
-    elements.btnClearFiltersMini.addEventListener("click", resetAllTxFilters);
-  }
-
   // Date pickers in Filter Modal
   if (elements.btnFilterStartDate) {
     elements.btnFilterStartDate.addEventListener("click", () => {
@@ -3565,7 +3519,7 @@
         const choice = (val === "(None)" || !val) ? "" : val;
         filterDraftState.category = choice;
         if (elements.filterCatText) {
-          elements.filterCatText.textContent = choice || "(All)";
+          elements.filterCatText.textContent = choice || "(None)";
           elements.filterCatText.classList.toggle("placeholder", !choice);
         }
       }, filterDraftState.category || "(None)");
@@ -3578,7 +3532,7 @@
         const choice = (val === "(None)" || !val) ? "" : val;
         filterDraftState.from = choice;
         if (elements.filterFromText) {
-          elements.filterFromText.textContent = choice || "(All)";
+          elements.filterFromText.textContent = choice || "(None)";
           elements.filterFromText.classList.toggle("placeholder", !choice);
         }
       }, filterDraftState.from || "(None)");
@@ -3591,7 +3545,7 @@
         const choice = (val === "(None)" || !val) ? "" : val;
         filterDraftState.to = choice;
         if (elements.filterToText) {
-          elements.filterToText.textContent = choice || "(All)";
+          elements.filterToText.textContent = choice || "(None)";
           elements.filterToText.classList.toggle("placeholder", !choice);
         }
       }, filterDraftState.to || "(None)");
