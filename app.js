@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v73";
+  const APP_VERSION = "v74";
 
   // State
   const state = {
