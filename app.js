@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v77";
+  const APP_VERSION = "v78";
 
   // State
   const state = {
@@ -3236,13 +3236,6 @@
         const row = document.createElement("div");
         row.className = "recent-item";
 
-        const left = document.createElement("div");
-        left.className = "recent-left";
-
-        const icon = document.createElement("div");
-        icon.className = "recent-icon";
-        icon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
-
         const info = document.createElement("div");
         info.className = "recent-info";
 
@@ -3252,32 +3245,20 @@
 
         const meta = document.createElement("div");
         meta.className = "recent-meta";
-        const parts = [];
-        if (item.category) parts.push(item.category);
-        if (item.from || item.to) {
-          const fromStr = item.from || "?";
-          const toStr = item.to || "?";
-          parts.push(`${fromStr} → ${toStr}`);
-        }
-        if (item.sheetName && item.sheetName !== state.sheetName) {
-          parts.push(item.sheetName);
-        }
-        meta.textContent = parts.join(" · ") || "No category";
+        const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
+        meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}`;
 
         info.appendChild(desc);
         info.appendChild(meta);
-        left.appendChild(icon);
-        left.appendChild(info);
 
         const right = document.createElement("div");
         right.className = "recent-right";
 
         const amt = document.createElement("div");
         amt.className = "recent-amount";
-        const amtVal = parseFloat(item.amount || 0);
-        amt.textContent = "$" + amtVal.toFixed(2);
+        amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
 
-        // Color coding matching recent transactions list
+        // Color coding matching recent transactions list exactly
         const toVal = (item.to || "").trim().toLowerCase();
         const fromVal = (item.from || "").trim().toLowerCase();
 
@@ -3286,11 +3267,11 @@
         } else if (fromVal === "income") {
           amt.style.color = "#34d399"; // Green
         } else {
-          amt.style.color = "#fbbf24"; // Yellow
+          amt.style.color = "#facc15"; // Yellow
         }
 
         right.appendChild(amt);
-        row.appendChild(left);
+        row.appendChild(info);
         row.appendChild(right);
 
         // Tap to edit/delete any past transaction
