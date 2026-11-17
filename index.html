@@ -20,13 +20,52 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700;800&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
+
+  <!-- Theme Color Pre-render Script (Zero Flash) -->
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('budget_accent_theme');
+        if (t === 'custom') {
+          var c = localStorage.getItem('budget_custom_color');
+          if (c) {
+            document.documentElement.setAttribute('data-theme', 'custom');
+            var hex = c.replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(function(x){return x+x;}).join('');
+            var num = parseInt(hex, 16);
+            var r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+            var dr = Math.floor(r * 0.8), dg = Math.floor(g * 0.8), db = Math.floor(b * 0.8);
+            var dHex = '#' + ((1 << 24) + (dr << 16) + (dg << 8) + db).toString(16).slice(1);
+            var s = document.documentElement.style;
+            s.setProperty('--accent-color', c);
+            s.setProperty('--accent-dark', dHex);
+            s.setProperty('--accent-glow', 'rgba(' + r + ',' + g + ',' + b + ',0.25)');
+            s.setProperty('--accent-gradient', 'linear-gradient(135deg, ' + c + ', ' + dHex + ')');
+            s.setProperty('--border-focus', c);
+          }
+        } else if (t) {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch(e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="app-container">
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
-        <img src="icons/brand-logo.svg" alt="Budget Logo" class="brand-icon" id="brandLogo" role="button" tabindex="0" title="Tap to refresh app">
+        <svg class="brand-icon" id="brandLogo" viewBox="0 0 512 512" width="38" height="38" role="button" tabindex="0" title="Tap to refresh app" aria-label="Budget Logo">
+          <defs>
+            <clipPath id="circleClip">
+              <circle cx="256" cy="256" r="250" />
+            </clipPath>
+          </defs>
+          <g clip-path="url(#circleClip)">
+            <polyline points="20,440 190,220 270,290 430,110" fill="none" stroke="currentColor" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
+            <polyline points="330,110 430,110 430,210" fill="none" stroke="currentColor" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </svg>
         <div>
           <h1 class="brand-title">Budget</h1>
           <div class="brand-status" id="brandStatus">
@@ -256,6 +295,29 @@
           </button>
         </div>
 
+        <!-- Accent Color Theme Section -->
+        <div class="settings-field">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label class="settings-label" style="font-size: 14px; font-weight: 700; color: #ffffff; margin: 0;">Accent Color</label>
+            <span id="themeNameBadge" style="font-size: 12px; color: var(--accent-color); font-weight: 600;">Emerald</span>
+          </div>
+          <div class="theme-palette-grid" id="themePalette">
+            <button type="button" class="theme-swatch active" data-theme-id="emerald" data-theme-name="Emerald" style="--swatch-bg: #10b981;" title="Emerald (Default)"></button>
+            <button type="button" class="theme-swatch" data-theme-id="blue" data-theme-name="Sapphire" style="--swatch-bg: #3b82f6;" title="Sapphire Blue"></button>
+            <button type="button" class="theme-swatch" data-theme-id="purple" data-theme-name="Royal Violet" style="--swatch-bg: #8b5cf6;" title="Royal Violet"></button>
+            <button type="button" class="theme-swatch" data-theme-id="amber" data-theme-name="Amber Gold" style="--swatch-bg: #f59e0b;" title="Amber Gold"></button>
+            <button type="button" class="theme-swatch" data-theme-id="rose" data-theme-name="Crimson Rose" style="--swatch-bg: #f43f5e;" title="Crimson Rose"></button>
+            <button type="button" class="theme-swatch theme-swatch-custom" id="btnCustomColor" data-theme-id="custom" data-theme-name="Custom" title="Custom Color">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="swatch-custom-icon">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="16"></line>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
+              </svg>
+            </button>
+            <input type="color" id="customColorInput" style="position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0;" value="#10b981">
+          </div>
+        </div>
+
         <!-- Haptic Feedback Toggle Row -->
         <div class="settings-toggle-row">
           <div class="settings-toggle-info">
@@ -277,7 +339,7 @@
           </svg>
           Sync Dropdown Chips Now
         </button>
-        <button type="button" class="btn-sync-now" id="btnOpenQuickFillSettings" style="margin-top: 10px; border-color: rgba(16, 185, 129, 0.4); color: #10b981;">
+        <button type="button" class="btn-sync-now" id="btnOpenQuickFillSettings" style="margin-top: 10px; border-color: var(--accent-glow); color: var(--accent-color);">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
@@ -286,7 +348,7 @@
         </button>
 
         <div class="settings-version-footer" style="text-align: right; width: 100%; margin-top: 10px; margin-bottom: -8px;">
-          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v65</span>
+          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v66</span>
         </div>
       </div>
     </div>
