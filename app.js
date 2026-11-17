@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v66";
+  const APP_VERSION = "v67";
 
   // State
   const state = {
@@ -14,7 +14,6 @@
     sheetName: localStorage.getItem("budget_sheet_name") || "Budget",
     hapticsEnabled: localStorage.getItem("budget_haptics_enabled") !== "false",
     accentTheme: localStorage.getItem("budget_accent_theme") || "emerald",
-    customColor: localStorage.getItem("budget_custom_color") || "#10b981",
     defaults: {
       category: localStorage.getItem("budget_default_category") || "",
       from: localStorage.getItem("budget_default_from") || "",
@@ -73,8 +72,6 @@
     settingsVersion: document.getElementById("settingsVersion"),
     themePalette: document.getElementById("themePalette"),
     themeNameBadge: document.getElementById("themeNameBadge"),
-    btnCustomColor: document.getElementById("btnCustomColor"),
-    customColorInput: document.getElementById("customColorInput"),
     btnSaveSettings: document.getElementById("btnSaveSettings"),
     btnSyncNow: document.getElementById("btnSyncNow"),
     queueBadge: document.getElementById("queueBadge"),
@@ -1193,66 +1190,13 @@
   }
 
   // =========================================================================
-  // Theme & Accent Customization Controller
+  // Theme & Accent Customization Controller (7 Preset Palette)
   // =========================================================================
 
-  function computeColorTokens(hex) {
-    hex = (hex || "").replace("#", "").trim();
-    if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
-    if (hex.length !== 6) hex = "10b981"; // Safe fallback
-    const num = parseInt(hex, 16);
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-
-    // Darken by 20% for gradient depth and active press states
-    const darkR = Math.max(0, Math.floor(r * 0.8));
-    const darkG = Math.max(0, Math.floor(g * 0.8));
-    const darkB = Math.max(0, Math.floor(b * 0.8));
-    const darkHex = `#${((1 << 24) + (darkR << 16) + (darkG << 8) + darkB).toString(16).slice(1)}`;
-
-    return {
-      hex: `#${hex}`,
-      dark: darkHex,
-      glow: `rgba(${r}, ${g}, ${b}, 0.25)`,
-      gradient: `linear-gradient(135deg, #${hex}, ${darkHex})`
-    };
-  }
-
-  function applyTheme(themeId, customHex = null) {
-    const docStyle = document.documentElement.style;
+  function applyTheme(themeId) {
     state.accentTheme = themeId;
     localStorage.setItem("budget_accent_theme", themeId);
-
-    if (themeId === "custom") {
-      const chosenHex = customHex || state.customColor || localStorage.getItem("budget_custom_color") || "#10b981";
-      const tokens = computeColorTokens(chosenHex);
-      state.customColor = tokens.hex;
-      localStorage.setItem("budget_custom_color", tokens.hex);
-
-      // Apply dynamic CSS variables directly to :root
-      docStyle.setProperty("--accent-color", tokens.hex);
-      docStyle.setProperty("--accent-dark", tokens.dark);
-      docStyle.setProperty("--accent-glow", tokens.glow);
-      docStyle.setProperty("--accent-gradient", tokens.gradient);
-      docStyle.setProperty("--border-focus", tokens.hex);
-
-      document.documentElement.setAttribute("data-theme", "custom");
-
-      if (elements.customColorInput) {
-        elements.customColorInput.value = tokens.hex;
-      }
-    } else {
-      // Remove inline custom overrides so stylesheet data-theme tokens take effect cleanly
-      docStyle.removeProperty("--accent-color");
-      docStyle.removeProperty("--accent-dark");
-      docStyle.removeProperty("--accent-glow");
-      docStyle.removeProperty("--accent-gradient");
-      docStyle.removeProperty("--border-focus");
-
-      document.documentElement.setAttribute("data-theme", themeId);
-    }
-
+    document.documentElement.setAttribute("data-theme", themeId);
     updateThemeUI();
   }
 
@@ -1263,39 +1207,21 @@
     if (elements.themePalette) {
       const swatches = elements.themePalette.querySelectorAll(".theme-swatch");
       swatches.forEach((s) => {
-        const isCurrent = s.dataset.themeId === themeId;
-        s.classList.toggle("active", isCurrent);
+        s.classList.toggle("active", s.dataset.themeId === themeId);
       });
-    }
-
-    // Custom swatch styling
-    if (elements.btnCustomColor) {
-      const isCustom = themeId === "custom";
-      if (state.customColor) {
-        elements.btnCustomColor.classList.add("has-custom");
-        elements.btnCustomColor.style.setProperty("--custom-color", state.customColor);
-        elements.btnCustomColor.style.setProperty("--swatch-bg", state.customColor);
-      }
-      elements.btnCustomColor.classList.toggle("active", isCustom);
     }
 
     // Update theme name badge in Settings
     if (elements.themeNameBadge) {
-      if (themeId === "custom") {
-        elements.themeNameBadge.textContent = `Custom (${(state.customColor || "").toUpperCase()})`;
-      } else {
-        const activeSwatch = elements.themePalette ? elements.themePalette.querySelector(`.theme-swatch[data-theme-id="${themeId}"]`) : null;
-        elements.themeNameBadge.textContent = activeSwatch ? (activeSwatch.dataset.themeName || themeId) : "Emerald";
-      }
+      const activeSwatch = elements.themePalette ? elements.themePalette.querySelector(`.theme-swatch[data-theme-id="${themeId}"]`) : null;
+      elements.themeNameBadge.textContent = activeSwatch ? (activeSwatch.dataset.themeName || themeId) : "Emerald";
     }
   }
 
   function initTheme() {
     const savedTheme = localStorage.getItem("budget_accent_theme") || "emerald";
-    const savedCustom = localStorage.getItem("budget_custom_color") || "#10b981";
     state.accentTheme = savedTheme;
-    state.customColor = savedCustom;
-    applyTheme(savedTheme, savedCustom);
+    applyTheme(savedTheme);
   }
 
   function initThemeEvents() {
@@ -1303,38 +1229,12 @@
       elements.themePalette.addEventListener("click", (e) => {
         const swatch = e.target.closest(".theme-swatch");
         if (!swatch) return;
-
         const themeId = swatch.dataset.themeId;
-        if (themeId === "custom") {
-          // Open native color picker
-          if (elements.customColorInput) {
-            if (typeof elements.customColorInput.showPicker === "function") {
-              try {
-                elements.customColorInput.showPicker();
-              } catch (err) {
-                elements.customColorInput.click();
-              }
-            } else {
-              elements.customColorInput.click();
-            }
-          }
-        } else {
+        if (themeId) {
           haptic(10);
           applyTheme(themeId);
         }
       });
-    }
-
-    if (elements.customColorInput) {
-      const handleColorChange = (e) => {
-        const newColor = e.target.value;
-        if (newColor) {
-          applyTheme("custom", newColor);
-          haptic(15);
-        }
-      };
-      elements.customColorInput.addEventListener("input", handleColorChange);
-      elements.customColorInput.addEventListener("change", handleColorChange);
     }
   }
 
