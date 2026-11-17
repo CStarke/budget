@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v72";
+  const APP_VERSION = "v73";
 
   // State
   const state = {
@@ -127,7 +127,43 @@
     btnQfTo: document.getElementById("btnQfTo"),
     qfToBtnText: document.getElementById("qfToBtnText"),
     btnSaveQuickFillOption: document.getElementById("btnSaveQuickFillOption"),
-    btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption")
+    btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption"),
+
+    // All Transactions View
+    btnSeeAllTransactions: document.getElementById("btnSeeAllTransactions"),
+    allTransactionsModal: document.getElementById("allTransactionsModal"),
+    btnBackToRecent: document.getElementById("btnBackToRecent"),
+    allTxCountBadge: document.getElementById("allTxCountBadge"),
+    btnRefreshAllTx: document.getElementById("btnRefreshAllTx"),
+    allTxSearchInput: document.getElementById("allTxSearchInput"),
+    btnClearAllTxSearch: document.getElementById("btnClearAllTxSearch"),
+    btnOpenAllTxFilter: document.getElementById("btnOpenAllTxFilter"),
+    filterActiveDot: document.getElementById("filterActiveDot"),
+    allTxActiveFilterBar: document.getElementById("allTxActiveFilterBar"),
+    allTxFilterSummaryText: document.getElementById("allTxFilterSummaryText"),
+    btnClearFiltersMini: document.getElementById("btnClearFiltersMini"),
+    allTransactionsContainer: document.getElementById("allTransactionsContainer"),
+    allTxSentinel: document.getElementById("allTxSentinel"),
+
+    // Filter Modal
+    allTxFilterModal: document.getElementById("allTxFilterModal"),
+    btnCloseAllTxFilter: document.getElementById("btnCloseAllTxFilter"),
+    btnFilterStartDate: document.getElementById("btnFilterStartDate"),
+    filterStartDateText: document.getElementById("filterStartDateText"),
+    filterStartDatePicker: document.getElementById("filterStartDatePicker"),
+    btnFilterEndDate: document.getElementById("btnFilterEndDate"),
+    filterEndDateText: document.getElementById("filterEndDateText"),
+    filterEndDatePicker: document.getElementById("filterEndDatePicker"),
+    filterMinAmount: document.getElementById("filterMinAmount"),
+    filterMaxAmount: document.getElementById("filterMaxAmount"),
+    btnFilterCategory: document.getElementById("btnFilterCategory"),
+    filterCatText: document.getElementById("filterCatText"),
+    btnFilterFrom: document.getElementById("btnFilterFrom"),
+    filterFromText: document.getElementById("filterFromText"),
+    btnFilterTo: document.getElementById("btnFilterTo"),
+    filterToText: document.getElementById("filterToText"),
+    btnApplyAllTxFilters: document.getElementById("btnApplyAllTxFilters"),
+    btnResetAllTxFilters: document.getElementById("btnResetAllTxFilters")
   };
 
   // Default fallback options if sheet hasn't synced yet
@@ -818,6 +854,7 @@
     };
     list.unshift(item);
     saveRecentTransactions(list);
+    addToAllTransactions(item);
   }
 
   function removeRecentTransaction(id) {
@@ -969,6 +1006,9 @@
     removeRecentTransaction(item.id);
     renderRecentList();
 
+    // 1b. Remove from all transactions list
+    removeFromAllTransactions(item);
+
     // 2. Remove from offline queue if it hasn't synced yet
     const queue = getOfflineQueue();
     const filteredQueue = queue.filter(
@@ -991,6 +1031,7 @@
             },
             body: JSON.stringify({
               action: "undo",
+              sheetName: item.sheetName || null,
               row: item.row,
               date: item.date,
               description: item.description,
@@ -2219,6 +2260,19 @@
       renderRecentList();
     }
 
+    // 1b. Optimistically update all transactions list
+    const allList = loadAllTransactionsFromStorage();
+    const aIdx = allList.findIndex(
+      (t) => (t.id && orig.id && t.id === orig.id) ||
+             (orig.sheetName && orig.row && t.sheetName === orig.sheetName && t.row === orig.row) ||
+             (t.description === orig.description && Math.abs(t.amount - orig.amount) < 0.01 && t.date === orig.date)
+    );
+    if (aIdx !== -1) {
+      allList[aIdx] = { ...allList[aIdx], ...updatedTx };
+      saveAllTransactionsToStorage(allList);
+      applyAllTxFiltersAndRender(false);
+    }
+
     // 2. If it was pending in the offline queue, update it in place
     const queue = getOfflineQueue();
     const qIdx = queue.findIndex(
@@ -2251,6 +2305,7 @@
             },
             body: JSON.stringify({
               action: "edit",
+              sheetName: orig.sheetName || null,
               row: orig.row,
               original: orig,
               updated: updatedTx
@@ -2818,6 +2873,686 @@
   if (elements.transactionEditorModal) {
     elements.transactionEditorModal.addEventListener("click", (e) => {
       if (e.target === elements.transactionEditorModal) closeQuickFillEditor();
+    });
+  }
+
+  // ==========================================================================
+  // All Transactions Full-Screen Feed & Multi-Year Management (v73)
+  // ==========================================================================
+
+  const ALL_TXS_KEY = "budget_all_txs";
+  let allTransactionsList = [];
+  let filteredTransactionsList = [];
+  let allTxRenderOffset = 0;
+  const ALL_TX_CHUNK_SIZE = 50;
+  let allTxObserver = null;
+  let searchDebounceTimer = null;
+  let lastRenderedDate = null;
+  let isFetchingAllTx = false;
+
+  const allTxFilterState = {
+    search: "",
+    startDate: "",
+    endDate: "",
+    minCents: 0,
+    maxCents: 0,
+    category: "",
+    from: "",
+    to: ""
+  };
+
+  const filterDraftState = {
+    startDate: "",
+    endDate: "",
+    minCents: 0,
+    maxCents: 0,
+    category: "",
+    from: "",
+    to: ""
+  };
+
+  function loadAllTransactionsFromStorage() {
+    try {
+      const raw = localStorage.getItem(ALL_TXS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          allTransactionsList = parsed;
+          return allTransactionsList;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load cached all transactions", e);
+    }
+    allTransactionsList = [];
+    return allTransactionsList;
+  }
+
+  function saveAllTransactionsToStorage(txs) {
+    try {
+      allTransactionsList = Array.isArray(txs) ? txs : [];
+      localStorage.setItem(ALL_TXS_KEY, JSON.stringify(allTransactionsList));
+    } catch (e) {
+      console.warn("Failed to save all transactions to cache", e);
+    }
+  }
+
+  function addToAllTransactions(tx) {
+    const list = loadAllTransactionsFromStorage();
+    const item = {
+      id: tx.id || ("tx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6)),
+      sheetName: tx.sheetName || null,
+      row: tx.row || null,
+      date: tx.date || getFormattedDate(new Date()),
+      description: tx.description || "Untitled",
+      category: tx.category || "",
+      from: tx.from || "",
+      to: tx.to || "",
+      amount: parseFloat(tx.amount) || 0,
+      timestamp: Date.now()
+    };
+    list.unshift(item);
+    saveAllTransactionsToStorage(list);
+    if (elements.allTransactionsModal && elements.allTransactionsModal.classList.contains("open")) {
+      applyAllTxFiltersAndRender(false);
+    }
+  }
+
+  function removeFromAllTransactions(item) {
+    const list = loadAllTransactionsFromStorage();
+    const filtered = list.filter((t) => {
+      if (item.id && t.id && t.id === item.id) return false;
+      if (item.sheetName && item.row && t.sheetName === item.sheetName && t.row === item.row) return false;
+      if (item.description === t.description && Math.abs(item.amount - t.amount) < 0.01 && item.date === t.date) return false;
+      return true;
+    });
+    saveAllTransactionsToStorage(filtered);
+    if (elements.allTransactionsModal && elements.allTransactionsModal.classList.contains("open")) {
+      applyAllTxFiltersAndRender(false);
+    }
+  }
+
+  async function fetchAllTransactionsFromSheet(showFeedback = false) {
+    if (!state.scriptUrl) {
+      if (showFeedback) showToast("Google Script URL not configured", "error");
+      return;
+    }
+    if (!navigator.onLine) {
+      if (showFeedback) showToast("Offline: showing cached transactions.", "info");
+      return;
+    }
+    if (isFetchingAllTx) return;
+
+    isFetchingAllTx = true;
+    if (elements.btnRefreshAllTx) {
+      elements.btnRefreshAllTx.classList.add("rotating");
+    }
+
+    try {
+      const url = `${state.scriptUrl}${state.scriptUrl.includes("?") ? "&" : "?"}action=all&t=${Date.now()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.transactions)) {
+        saveAllTransactionsToStorage(data.transactions);
+        applyAllTxFiltersAndRender(false);
+        if (showFeedback) showToast(`Synced ${data.transactions.length} transactions from Sheet`, "success");
+      } else if (showFeedback) {
+        showToast("No transactions found in Sheet.", "info");
+      }
+    } catch (err) {
+      console.warn("Error fetching all transactions:", err);
+      if (showFeedback) showToast("Could not sync with sheet (offline?)", "error");
+    } finally {
+      isFetchingAllTx = false;
+      if (elements.btnRefreshAllTx) {
+        elements.btnRefreshAllTx.classList.remove("rotating");
+      }
+    }
+  }
+
+  function matchesFilter(tx) {
+    // 1. Text search
+    if (allTxFilterState.search) {
+      const q = allTxFilterState.search.toLowerCase().trim();
+      const desc = String(tx.description || "").toLowerCase();
+      const cat = String(tx.category || "").toLowerCase();
+      const from = String(tx.from || "").toLowerCase();
+      const to = String(tx.to || "").toLowerCase();
+      const dateStr = String(tx.date || "");
+      const humanDate = formatHumanDate(dateStr).toLowerCase();
+      const amtStr = String(tx.amount || "");
+      
+      const match = desc.includes(q) || cat.includes(q) || from.includes(q) || 
+                    to.includes(q) || dateStr.includes(q) || humanDate.includes(q) ||
+                    amtStr.includes(q);
+      if (!match) return false;
+    }
+
+    // 2. Date Range
+    if (allTxFilterState.startDate && tx.date) {
+      if (tx.date < allTxFilterState.startDate) return false;
+    }
+    if (allTxFilterState.endDate && tx.date) {
+      if (tx.date > allTxFilterState.endDate) return false;
+    }
+
+    // 3. Amount Range
+    if (allTxFilterState.minCents > 0) {
+      const txCents = Math.round((parseFloat(tx.amount) || 0) * 100);
+      if (txCents < allTxFilterState.minCents) return false;
+    }
+    if (allTxFilterState.maxCents > 0) {
+      const txCents = Math.round((parseFloat(tx.amount) || 0) * 100);
+      if (txCents > allTxFilterState.maxCents) return false;
+    }
+
+    // 4. Category
+    if (allTxFilterState.category && allTxFilterState.category !== "(All)" && allTxFilterState.category !== "(None)") {
+      if (tx.category !== allTxFilterState.category) return false;
+    }
+
+    // 5. From Account
+    if (allTxFilterState.from && allTxFilterState.from !== "(All)" && allTxFilterState.from !== "(None)") {
+      if (tx.from !== allTxFilterState.from) return false;
+    }
+
+    // 6. To Account
+    if (allTxFilterState.to && allTxFilterState.to !== "(All)" && allTxFilterState.to !== "(None)") {
+      if (tx.to !== allTxFilterState.to) return false;
+    }
+
+    return true;
+  }
+
+  function formatDateSeparator(dateStr) {
+    if (!dateStr) return "Unknown Date";
+    const todayStr = getFormattedDate(new Date());
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = getFormattedDate(yesterday);
+
+    const pretty = formatHumanDate(dateStr);
+    if (dateStr === todayStr) {
+      return `Today · ${pretty}`;
+    }
+    if (dateStr === yesterdayStr) {
+      return `Yesterday · ${pretty}`;
+    }
+    return pretty;
+  }
+
+  function isAnyFilterActive() {
+    return Boolean(
+      allTxFilterState.startDate ||
+      allTxFilterState.endDate ||
+      allTxFilterState.minCents > 0 ||
+      allTxFilterState.maxCents > 0 ||
+      (allTxFilterState.category && allTxFilterState.category !== "(All)" && allTxFilterState.category !== "(None)") ||
+      (allTxFilterState.from && allTxFilterState.from !== "(All)" && allTxFilterState.from !== "(None)") ||
+      (allTxFilterState.to && allTxFilterState.to !== "(All)" && allTxFilterState.to !== "(None)")
+    );
+  }
+
+  function updateFilterButtonActiveState() {
+    const hasFilter = isAnyFilterActive();
+    if (elements.btnOpenAllTxFilter) {
+      elements.btnOpenAllTxFilter.classList.toggle("has-filter", hasFilter);
+    }
+    if (elements.filterActiveDot) {
+      elements.filterActiveDot.style.display = hasFilter ? "block" : "none";
+    }
+
+    if (elements.allTxActiveFilterBar) {
+      if (hasFilter) {
+        elements.allTxActiveFilterBar.style.display = "flex";
+        const tags = [];
+        if (allTxFilterState.startDate && allTxFilterState.endDate) {
+          tags.push(`${formatHumanDate(allTxFilterState.startDate)} - ${formatHumanDate(allTxFilterState.endDate)}`);
+        } else if (allTxFilterState.startDate) {
+          tags.push(`After ${formatHumanDate(allTxFilterState.startDate)}`);
+        } else if (allTxFilterState.endDate) {
+          tags.push(`Before ${formatHumanDate(allTxFilterState.endDate)}`);
+        }
+
+        if (allTxFilterState.minCents > 0 && allTxFilterState.maxCents > 0) {
+          tags.push(`$${formatCentsWithCommas(allTxFilterState.minCents)} - $${formatCentsWithCommas(allTxFilterState.maxCents)}`);
+        } else if (allTxFilterState.minCents > 0) {
+          tags.push(`>$${formatCentsWithCommas(allTxFilterState.minCents)}`);
+        } else if (allTxFilterState.maxCents > 0) {
+          tags.push(`<$${formatCentsWithCommas(allTxFilterState.maxCents)}`);
+        }
+
+        if (allTxFilterState.category && allTxFilterState.category !== "(All)") {
+          tags.push(allTxFilterState.category);
+        }
+        if (allTxFilterState.from && allTxFilterState.from !== "(All)") {
+          tags.push(`From: ${allTxFilterState.from}`);
+        }
+        if (allTxFilterState.to && allTxFilterState.to !== "(All)") {
+          tags.push(`To: ${allTxFilterState.to}`);
+        }
+        elements.allTxFilterSummaryText.textContent = `Filtered by: ${tags.join(", ")}`;
+      } else {
+        elements.allTxActiveFilterBar.style.display = "none";
+      }
+    }
+  }
+
+  function applyAllTxFiltersAndRender(resetScroll = true) {
+    if (!elements.allTransactionsContainer) return;
+    filteredTransactionsList = allTransactionsList.filter(matchesFilter);
+
+    if (elements.allTxCountBadge) {
+      elements.allTxCountBadge.textContent = filteredTransactionsList.length;
+    }
+
+    updateFilterButtonActiveState();
+
+    allTxRenderOffset = 0;
+    lastRenderedDate = null;
+    elements.allTransactionsContainer.innerHTML = "";
+
+    if (filteredTransactionsList.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "recent-empty";
+      empty.style.padding = "40px 16px";
+      empty.textContent = allTransactionsList.length === 0 
+        ? "No transactions found." 
+        : "No transactions match your search/filters.";
+      elements.allTransactionsContainer.appendChild(empty);
+      return;
+    }
+
+    appendNextAllTxChunk();
+
+    if (resetScroll && elements.allTransactionsContainer) {
+      elements.allTransactionsContainer.scrollTop = 0;
+    }
+  }
+
+  function appendNextAllTxChunk() {
+    if (!elements.allTransactionsContainer) return;
+    if (allTxRenderOffset >= filteredTransactionsList.length) return;
+
+    const chunk = filteredTransactionsList.slice(allTxRenderOffset, allTxRenderOffset + ALL_TX_CHUNK_SIZE);
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < chunk.length; i++) {
+      const item = chunk[i];
+      const itemDate = item.date || "";
+
+      // Check if we need a date separator header
+      if (itemDate !== lastRenderedDate) {
+        lastRenderedDate = itemDate;
+        const sep = document.createElement("div");
+        sep.className = "all-tx-date-separator";
+        
+        const textSpan = document.createElement("span");
+        textSpan.className = "all-tx-date-text";
+        textSpan.textContent = formatDateSeparator(itemDate);
+        sep.appendChild(textSpan);
+
+        const lineSpan = document.createElement("div");
+        lineSpan.className = "all-tx-date-line";
+        sep.appendChild(lineSpan);
+
+        fragment.appendChild(sep);
+      }
+
+      // Transaction row (identical to recent-item)
+      const row = document.createElement("div");
+      row.className = "recent-item";
+
+      const left = document.createElement("div");
+      left.className = "recent-left";
+
+      const icon = document.createElement("div");
+      icon.className = "recent-icon";
+      icon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>`;
+
+      const info = document.createElement("div");
+      info.className = "recent-info";
+
+      const desc = document.createElement("div");
+      desc.className = "recent-desc";
+      desc.textContent = item.description || "Untitled";
+
+      const meta = document.createElement("div");
+      meta.className = "recent-meta";
+      const parts = [];
+      if (item.category) parts.push(item.category);
+      if (item.from || item.to) {
+        const fromStr = item.from || "?";
+        const toStr = item.to || "?";
+        parts.push(`${fromStr} → ${toStr}`);
+      }
+      meta.textContent = parts.join(" · ") || "No category";
+
+      info.appendChild(desc);
+      info.appendChild(meta);
+      left.appendChild(icon);
+      left.appendChild(info);
+
+      const right = document.createElement("div");
+      right.className = "recent-right";
+
+      const amt = document.createElement("div");
+      amt.className = "recent-amount";
+      amt.textContent = formatCurrency(parseFloat(item.amount) || 0);
+
+      right.appendChild(amt);
+      row.appendChild(left);
+      row.appendChild(right);
+
+      // Tap to edit/delete any past transaction
+      row.addEventListener("click", () => {
+        openTransactionEditor(item);
+      });
+
+      fragment.appendChild(row);
+    }
+
+    elements.allTransactionsContainer.appendChild(fragment);
+    allTxRenderOffset += chunk.length;
+  }
+
+  function setupAllTxObserver() {
+    if (allTxObserver) {
+      allTxObserver.disconnect();
+    }
+    if (!elements.allTxSentinel) return;
+
+    allTxObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        appendNextAllTxChunk();
+      }
+    }, {
+      root: elements.allTransactionsModal,
+      rootMargin: "200px"
+    });
+
+    allTxObserver.observe(elements.allTxSentinel);
+  }
+
+  function resetAllTxFilters() {
+    allTxFilterState.startDate = "";
+    allTxFilterState.endDate = "";
+    allTxFilterState.minCents = 0;
+    allTxFilterState.maxCents = 0;
+    allTxFilterState.category = "";
+    allTxFilterState.from = "";
+    allTxFilterState.to = "";
+    syncDraftWithActiveFilter();
+    updateFilterModalUI();
+    applyAllTxFiltersAndRender(true);
+    haptic(15);
+  }
+
+  function openAllTxFilterModal() {
+    syncDraftWithActiveFilter();
+    updateFilterModalUI();
+    elements.allTxFilterModal.classList.add("open");
+  }
+
+  function closeAllTxFilterModal() {
+    elements.allTxFilterModal.classList.remove("open");
+  }
+
+  function syncDraftWithActiveFilter() {
+    filterDraftState.startDate = allTxFilterState.startDate;
+    filterDraftState.endDate = allTxFilterState.endDate;
+    filterDraftState.minCents = allTxFilterState.minCents;
+    filterDraftState.maxCents = allTxFilterState.maxCents;
+    filterDraftState.category = allTxFilterState.category;
+    filterDraftState.from = allTxFilterState.from;
+    filterDraftState.to = allTxFilterState.to;
+  }
+
+  function updateFilterModalUI() {
+    if (elements.filterStartDateText) {
+      elements.filterStartDateText.textContent = filterDraftState.startDate 
+        ? formatHumanDate(filterDraftState.startDate) 
+        : "Start Date";
+      elements.filterStartDateText.classList.toggle("placeholder", !filterDraftState.startDate);
+    }
+    if (elements.filterStartDatePicker) {
+      elements.filterStartDatePicker.value = filterDraftState.startDate || "";
+    }
+
+    if (elements.filterEndDateText) {
+      elements.filterEndDateText.textContent = filterDraftState.endDate 
+        ? formatHumanDate(filterDraftState.endDate) 
+        : "End Date";
+      elements.filterEndDateText.classList.toggle("placeholder", !filterDraftState.endDate);
+    }
+    if (elements.filterEndDatePicker) {
+      elements.filterEndDatePicker.value = filterDraftState.endDate || "";
+    }
+
+    if (elements.filterMinAmount) {
+      elements.filterMinAmount.value = filterDraftState.minCents > 0 
+        ? formatCentsWithCommas(filterDraftState.minCents) 
+        : "";
+    }
+    if (elements.filterMaxAmount) {
+      elements.filterMaxAmount.value = filterDraftState.maxCents > 0 
+        ? formatCentsWithCommas(filterDraftState.maxCents) 
+        : "";
+    }
+
+    if (elements.filterCatText) {
+      elements.filterCatText.textContent = filterDraftState.category || "(All)";
+      elements.filterCatText.classList.toggle("placeholder", !filterDraftState.category || filterDraftState.category === "(All)");
+    }
+    if (elements.filterFromText) {
+      elements.filterFromText.textContent = filterDraftState.from || "(All)";
+      elements.filterFromText.classList.toggle("placeholder", !filterDraftState.from || filterDraftState.from === "(All)");
+    }
+    if (elements.filterToText) {
+      elements.filterToText.textContent = filterDraftState.to || "(All)";
+      elements.filterToText.classList.toggle("placeholder", !filterDraftState.to || filterDraftState.to === "(All)");
+    }
+  }
+
+  function applyFilterModal() {
+    allTxFilterState.startDate = filterDraftState.startDate;
+    allTxFilterState.endDate = filterDraftState.endDate;
+    allTxFilterState.minCents = filterDraftState.minCents;
+    allTxFilterState.maxCents = filterDraftState.maxCents;
+    allTxFilterState.category = filterDraftState.category;
+    allTxFilterState.from = filterDraftState.from;
+    allTxFilterState.to = filterDraftState.to;
+
+    closeAllTxFilterModal();
+    applyAllTxFiltersAndRender(true);
+    haptic(15);
+  }
+
+  function openAllTransactionsPage() {
+    loadAllTransactionsFromStorage();
+    setupAllTxObserver();
+    applyAllTxFiltersAndRender(true);
+
+    if (elements.allTransactionsModal) {
+      elements.allTransactionsModal.classList.add("open");
+    }
+
+    // Background sync from sheet
+    fetchAllTransactionsFromSheet(false);
+  }
+
+  function closeAllTransactionsPage() {
+    if (elements.allTransactionsModal) {
+      elements.allTransactionsModal.classList.remove("open");
+    }
+  }
+
+  // Wiring All Transactions & Filter Listeners
+  if (elements.btnSeeAllTransactions) {
+    elements.btnSeeAllTransactions.addEventListener("click", openAllTransactionsPage);
+  }
+
+  if (elements.btnBackToRecent) {
+    elements.btnBackToRecent.addEventListener("click", closeAllTransactionsPage);
+  }
+
+  if (elements.btnRefreshAllTx) {
+    elements.btnRefreshAllTx.addEventListener("click", () => {
+      fetchAllTransactionsFromSheet(true);
+    });
+  }
+
+  if (elements.btnOpenAllTxFilter) {
+    elements.btnOpenAllTxFilter.addEventListener("click", openAllTxFilterModal);
+  }
+
+  if (elements.btnCloseAllTxFilter) {
+    elements.btnCloseAllTxFilter.addEventListener("click", closeAllTxFilterModal);
+  }
+
+  if (elements.allTxFilterModal) {
+    elements.allTxFilterModal.addEventListener("click", (e) => {
+      if (e.target === elements.allTxFilterModal) closeAllTxFilterModal();
+    });
+  }
+
+  if (elements.btnApplyAllTxFilters) {
+    elements.btnApplyAllTxFilters.addEventListener("click", applyFilterModal);
+  }
+
+  if (elements.btnResetAllTxFilters) {
+    elements.btnResetAllTxFilters.addEventListener("click", resetAllTxFilters);
+  }
+
+  if (elements.btnClearFiltersMini) {
+    elements.btnClearFiltersMini.addEventListener("click", resetAllTxFilters);
+  }
+
+  // Date pickers in Filter Modal
+  if (elements.btnFilterStartDate) {
+    elements.btnFilterStartDate.addEventListener("click", () => {
+      if (elements.filterStartDatePicker) {
+        if (elements.filterStartDatePicker.showPicker) {
+          elements.filterStartDatePicker.showPicker();
+        } else {
+          elements.filterStartDatePicker.click();
+        }
+      }
+    });
+  }
+
+  if (elements.filterStartDatePicker) {
+    elements.filterStartDatePicker.addEventListener("change", (e) => {
+      filterDraftState.startDate = e.target.value || "";
+      if (elements.filterStartDateText) {
+        elements.filterStartDateText.textContent = filterDraftState.startDate 
+          ? formatHumanDate(filterDraftState.startDate) 
+          : "Start Date";
+        elements.filterStartDateText.classList.toggle("placeholder", !filterDraftState.startDate);
+      }
+    });
+  }
+
+  if (elements.btnFilterEndDate) {
+    elements.btnFilterEndDate.addEventListener("click", () => {
+      if (elements.filterEndDatePicker) {
+        if (elements.filterEndDatePicker.showPicker) {
+          elements.filterEndDatePicker.showPicker();
+        } else {
+          elements.filterEndDatePicker.click();
+        }
+      }
+    });
+  }
+
+  if (elements.filterEndDatePicker) {
+    elements.filterEndDatePicker.addEventListener("change", (e) => {
+      filterDraftState.endDate = e.target.value || "";
+      if (elements.filterEndDateText) {
+        elements.filterEndDateText.textContent = filterDraftState.endDate 
+          ? formatHumanDate(filterDraftState.endDate) 
+          : "End Date";
+        elements.filterEndDateText.classList.toggle("placeholder", !filterDraftState.endDate);
+      }
+    });
+  }
+
+  // Amounts in Filter Modal
+  if (elements.filterMinAmount) {
+    elements.filterMinAmount.addEventListener("input", () => {
+      filterDraftState.minCents = parseAtmCents(elements.filterMinAmount.value);
+      elements.filterMinAmount.value = filterDraftState.minCents > 0 ? formatCentsWithCommas(filterDraftState.minCents) : "";
+    });
+  }
+
+  if (elements.filterMaxAmount) {
+    elements.filterMaxAmount.addEventListener("input", () => {
+      filterDraftState.maxCents = parseAtmCents(elements.filterMaxAmount.value);
+      elements.filterMaxAmount.value = filterDraftState.maxCents > 0 ? formatCentsWithCommas(filterDraftState.maxCents) : "";
+    });
+  }
+
+  // Category, From, To pickers in Filter Modal
+  if (elements.btnFilterCategory) {
+    elements.btnFilterCategory.addEventListener("click", () => {
+      openPicker("category", false, (val) => {
+        const choice = (val === "(None)" || !val) ? "" : val;
+        filterDraftState.category = choice;
+        if (elements.filterCatText) {
+          elements.filterCatText.textContent = choice || "(All)";
+          elements.filterCatText.classList.toggle("placeholder", !choice);
+        }
+      }, filterDraftState.category || "(None)");
+    });
+  }
+
+  if (elements.btnFilterFrom) {
+    elements.btnFilterFrom.addEventListener("click", () => {
+      openPicker("from", false, (val) => {
+        const choice = (val === "(None)" || !val) ? "" : val;
+        filterDraftState.from = choice;
+        if (elements.filterFromText) {
+          elements.filterFromText.textContent = choice || "(All)";
+          elements.filterFromText.classList.toggle("placeholder", !choice);
+        }
+      }, filterDraftState.from || "(None)");
+    });
+  }
+
+  if (elements.btnFilterTo) {
+    elements.btnFilterTo.addEventListener("click", () => {
+      openPicker("to", false, (val) => {
+        const choice = (val === "(None)" || !val) ? "" : val;
+        filterDraftState.to = choice;
+        if (elements.filterToText) {
+          elements.filterToText.textContent = choice || "(All)";
+          elements.filterToText.classList.toggle("placeholder", !choice);
+        }
+      }, filterDraftState.to || "(None)");
+    });
+  }
+
+  // Search input & clear button
+  if (elements.allTxSearchInput) {
+    elements.allTxSearchInput.addEventListener("input", () => {
+      const q = elements.allTxSearchInput.value;
+      if (elements.btnClearAllTxSearch) {
+        elements.btnClearAllTxSearch.style.display = q ? "block" : "none";
+      }
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        allTxFilterState.search = q;
+        applyAllTxFiltersAndRender(true);
+      }, 150);
+    });
+  }
+
+  if (elements.btnClearAllTxSearch) {
+    elements.btnClearAllTxSearch.addEventListener("click", () => {
+      elements.allTxSearchInput.value = "";
+      elements.btnClearAllTxSearch.style.display = "none";
+      allTxFilterState.search = "";
+      applyAllTxFiltersAndRender(true);
     });
   }
 

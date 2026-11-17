@@ -256,6 +256,98 @@ function getRecentTransactionsFromSheet(sheet, limit) {
 }
 
 /**
+ * Retrieves all transactions from all Budget YYYY sheets in descending chronological order.
+ * Reads only columns A-F for maximum efficiency.
+ */
+function getAllTransactionsFromAllBudgetSheets(ss) {
+  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var tz = ss.getSpreadsheetTimeZone() || (Session.getScriptTimeZone() || "GMT");
+  var startRow = CONFIG.START_ROW;
+  var allList = [];
+
+  var dateCol = CONFIG.COL.DATE - 1;
+  var descCol = CONFIG.COL.DESCRIPTION - 1;
+  var catCol = CONFIG.COL.CATEGORY - 1;
+  var fromCol = CONFIG.COL.FROM - 1;
+  var toCol = CONFIG.COL.TO - 1;
+  var amtCol = CONFIG.COL.AMOUNT - 1;
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var shName = sh.getName();
+    if (shName.indexOf(CONFIG.SHEET_NAME_PREFIX) !== 0) continue;
+
+    var lastRow = sh.getLastRow();
+    if (lastRow < startRow) continue;
+
+    var nextRow = findNextAvailableRow(sh);
+    var lastPopRow = nextRow - 1;
+    if (lastPopRow < startRow) continue;
+
+    var numRows = lastPopRow - startRow + 1;
+    var values = sh.getRange(startRow, 1, numRows, 6).getValues();
+
+    for (var i = 0; i < values.length; i++) {
+      var rowValues = values[i];
+      var rawDate = rowValues[dateCol];
+      if (rawDate === null || rawDate === undefined || String(rawDate).trim() === "") continue;
+
+      var desc = String(rowValues[descCol] || "").trim();
+      var cat = String(rowValues[catCol] || "").trim();
+      var fromVal = String(rowValues[fromCol] || "").trim();
+      var toVal = String(rowValues[toCol] || "").trim();
+      var rawAmt = rowValues[amtCol];
+
+      var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
+      var amt = parseFloat(cleanAmt);
+      if (isNaN(amt)) amt = 0.00;
+
+      var dateStr = "";
+      var dateObj = null;
+      if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+        dateStr = Utilities.formatDate(rawDate, tz, "yyyy-MM-dd");
+        dateObj = rawDate;
+      } else if (rawDate) {
+        dateStr = formatComparableDate(rawDate, tz);
+        try {
+          dateObj = parseDateInput(rawDate);
+        } catch (e) {
+          dateObj = new Date(dateStr);
+        }
+      }
+
+      var rowNumber = startRow + i;
+      allList.push({
+        id: shName.replace(/[^a-zA-Z0-9]/g, "") + "_" + rowNumber + "_" + (desc || "tx").replace(/[^a-zA-Z0-9]/g, ""),
+        sheetName: shName,
+        row: rowNumber,
+        date: dateStr,
+        description: desc || "Untitled",
+        category: cat,
+        from: fromVal,
+        to: toVal,
+        amount: amt,
+        timestamp: (dateObj && !isNaN(dateObj.getTime())) ? dateObj.getTime() : 0
+      });
+    }
+  }
+
+  // Sort descending by date (newest first). If same date, sort by row descending
+  allList.sort(function(a, b) {
+    if (b.timestamp !== a.timestamp) {
+      return b.timestamp - a.timestamp;
+    }
+    if (a.sheetName !== b.sheetName) {
+      return b.sheetName.localeCompare(a.sheetName);
+    }
+    return b.row - a.row;
+  });
+
+  return allList;
+}
+
+/**
  * Master options loader.
  */
 function getFormOptions() {
@@ -389,7 +481,9 @@ function editTransaction(data) {
   var updated = data.updated || data;
   
   var origDateStr = orig.date;
-  var sheet = getTargetSheet(origDateStr);
+  var explicitSheetName = (data && data.sheetName) || (orig && orig.sheetName) || null;
+  var sheet = (explicitSheetName && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(explicitSheetName)) ||
+              getTargetSheet(origDateStr);
   var lastRow = sheet.getLastRow();
   var startRow = CONFIG.START_ROW;
   var maxCol = CONFIG.MAX_COL;
@@ -578,7 +672,9 @@ function editTransaction(data) {
  * Deletes the most recent matching transaction from the budget sheet.
  */
 function deleteLastMatchingTransaction(data) {
-  var sheet = getTargetSheet(data ? data.date : null);
+  var explicitSheetName = data ? (data.sheetName || (data.original && data.original.sheetName)) : null;
+  var sheet = (explicitSheetName && SpreadsheetApp.getActiveSpreadsheet().getSheetByName(explicitSheetName)) ||
+              getTargetSheet(data ? data.date : null);
   var lastRow = sheet.getLastRow();
   var startRow = CONFIG.START_ROW;
   var maxCol = CONFIG.MAX_COL;
@@ -848,6 +944,15 @@ function doGet(e) {
         success: true,
         sheetName: targetSheet.getName(),
         recentTransactions: recent
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === "all" || action === "alltransactions") {
+      var all = getAllTransactionsFromAllBudgetSheets();
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        transactions: all,
+        totalCount: all.length
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

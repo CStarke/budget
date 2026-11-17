@@ -326,7 +326,7 @@
         </button>
 
         <div class="settings-version-footer" style="text-align: right; width: 100%; margin-top: 10px; margin-bottom: -8px;">
-          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v72</span>
+          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v73</span>
         </div>
       </div>
     </div>
@@ -541,6 +541,201 @@
         </div>
         <div class="recent-list" id="recentList">
           <!-- Rendered dynamically -->
+        </div>
+        <div class="recent-footer">
+          <button type="button" class="btn-see-all-transactions" id="btnSeeAllTransactions">
+            See All Transactions &rarr;
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-Screen All Transactions Modal Page -->
+    <div class="modal-overlay full-screen-overlay" id="allTransactionsModal">
+      <div class="modal-sheet full-screen-sheet">
+        <!-- Header -->
+        <div class="all-tx-header">
+          <button type="button" class="btn-all-back" id="btnBackToRecent">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>Back</span>
+          </button>
+          <div class="all-tx-title-group">
+            <h2 class="modal-title">All Transactions</h2>
+            <span id="allTxCountBadge" class="all-tx-badge">0</span>
+          </div>
+          <button type="button" class="btn-refresh-recent" id="btnRefreshAllTx" title="Refresh from Sheet" aria-label="Refresh All from Sheet">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Search & Filter Row -->
+        <div class="all-tx-search-row">
+          <div class="all-tx-search-container">
+            <svg class="all-tx-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              type="text" 
+              id="allTxSearchInput" 
+              class="all-tx-search-input" 
+              placeholder="Search description, category, date..." 
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+            >
+            <button type="button" id="btnClearAllTxSearch" class="btn-clear-search" style="display: none;">&times;</button>
+          </div>
+          <button type="button" id="btnOpenAllTxFilter" class="btn-all-tx-filter" title="Filter Transactions" aria-label="Filter Transactions">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span class="filter-active-dot" id="filterActiveDot" style="display: none;"></span>
+          </button>
+        </div>
+
+        <!-- Active Filter Bar (shows tag if filters applied) -->
+        <div id="allTxActiveFilterBar" class="all-tx-filter-bar" style="display: none;">
+          <span class="filter-bar-text" id="allTxFilterSummaryText">Filters active</span>
+          <button type="button" class="btn-clear-filters-mini" id="btnClearFiltersMini">Clear</button>
+        </div>
+
+        <!-- Scrollable Transaction Feed -->
+        <div class="all-tx-feed" id="allTransactionsContainer">
+          <!-- Rendered dynamically -->
+        </div>
+        <div id="allTxSentinel" style="height: 20px;"></div>
+      </div>
+    </div>
+
+    <!-- All Transactions Filter Bottom Sheet Modal -->
+    <div class="modal-overlay" id="allTxFilterModal">
+      <div class="modal-sheet" style="max-height: 90vh;">
+        <div class="modal-header">
+          <h2 class="modal-title">Filter Transactions</h2>
+          <button type="button" class="btn-close" id="btnCloseAllTxFilter">&times;</button>
+        </div>
+
+        <!-- Date Range -->
+        <div class="settings-field" style="margin-top: 4px;">
+          <label class="settings-label" style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Date Range</label>
+          <div style="display: flex; gap: 10px; width: 100%;">
+            <!-- Start Date -->
+            <div style="flex: 1; min-width: 0;">
+              <div class="category-label" style="margin-bottom: 4px;">From Date</div>
+              <div style="position: relative; width: 100%;">
+                <button type="button" class="date-pill selector-pill" id="btnFilterStartDate" style="width: 100%; justify-content: flex-start; padding: 11px 12px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; color: var(--accent-emerald); flex-shrink: 0;">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  <span class="pill-text placeholder" id="filterStartDateText">Start Date</span>
+                </button>
+                <input type="date" id="filterStartDatePicker" class="hidden-date-input">
+              </div>
+            </div>
+            <!-- End Date -->
+            <div style="flex: 1; min-width: 0;">
+              <div class="category-label" style="margin-bottom: 4px;">To Date</div>
+              <div style="position: relative; width: 100%;">
+                <button type="button" class="date-pill selector-pill" id="btnFilterEndDate" style="width: 100%; justify-content: flex-start; padding: 11px 12px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; color: var(--accent-emerald); flex-shrink: 0;">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  <span class="pill-text placeholder" id="filterEndDateText">End Date</span>
+                </button>
+                <input type="date" id="filterEndDatePicker" class="hidden-date-input">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dollar Amount Range -->
+        <div class="settings-field" style="margin-top: 14px;">
+          <label class="settings-label" style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Dollar Amount Range</label>
+          <div style="display: flex; gap: 10px; width: 100%;">
+            <!-- Min Amount -->
+            <div style="flex: 1; min-width: 0;">
+              <div class="category-label" style="margin-bottom: 4px;">Min Amount</div>
+              <div style="position: relative; display: flex; align-items: center;">
+                <span style="position: absolute; left: 12px; color: var(--accent-emerald); font-weight: 700; font-size: 14px;">$</span>
+                <input 
+                  type="text" 
+                  id="filterMinAmount" 
+                  class="settings-input" 
+                  placeholder="0.00" 
+                  inputmode="numeric" 
+                  pattern="[0-9]*"
+                  style="padding-left: 24px; padding-right: 10px; text-align: right;"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                >
+              </div>
+            </div>
+            <!-- Max Amount -->
+            <div style="flex: 1; min-width: 0;">
+              <div class="category-label" style="margin-bottom: 4px;">Max Amount</div>
+              <div style="position: relative; display: flex; align-items: center;">
+                <span style="position: absolute; left: 12px; color: var(--accent-emerald); font-weight: 700; font-size: 14px;">$</span>
+                <input 
+                  type="text" 
+                  id="filterMaxAmount" 
+                  class="settings-input" 
+                  placeholder="No limit" 
+                  inputmode="numeric" 
+                  pattern="[0-9]*"
+                  style="padding-left: 24px; padding-right: 10px; text-align: right;"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category & Accounts (Matching Quickfill Editor) -->
+        <div class="settings-field" style="margin-top: 14px;">
+          <label class="settings-label" style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Category & Accounts</label>
+          <div class="category-grid">
+            <div class="category-col">
+              <div class="category-label">Category</div>
+              <button type="button" class="date-pill selector-pill" id="btnFilterCategory">
+                <span class="pill-text placeholder" id="filterCatText">(All)</span>
+              </button>
+            </div>
+            <div class="category-col">
+              <div class="category-label">From</div>
+              <button type="button" class="date-pill selector-pill" id="btnFilterFrom">
+                <span class="pill-text placeholder" id="filterFromText">(All)</span>
+              </button>
+            </div>
+            <div class="category-col">
+              <div class="category-label">To</div>
+              <button type="button" class="date-pill selector-pill" id="btnFilterTo">
+                <span class="pill-text placeholder" id="filterToText">(All)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 8px; margin-top: 22px;">
+          <button type="button" class="btn-save-settings" id="btnApplyAllTxFilters" style="flex: 2; margin: 0;">Apply Filters</button>
+          <button type="button" class="btn-delete-option" id="btnResetAllTxFilters" style="flex: 1; margin: 0; background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border-color);">Reset</button>
         </div>
       </div>
     </div>
