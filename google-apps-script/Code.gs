@@ -24,7 +24,8 @@ var CONFIG = {
     CATEGORY: 3,
     FROM: 4,
     TO: 5,
-    AMOUNT: 6
+    AMOUNT: 6,
+    SKIP: 13
   }
 };
 
@@ -206,6 +207,7 @@ function getRecentTransactionsFromSheet(sheet, limit) {
 
   var numRows = lastPopRow - startRow + 1;
   var values = sheet.getRange(startRow, 1, numRows, maxCol).getValues();
+  var colMValues = sheet.getRange(startRow, CONFIG.COL.SKIP, numRows, 1).getValues();
   
   var list = [];
   var dateCol = CONFIG.COL.DATE - 1;
@@ -226,6 +228,8 @@ function getRecentTransactionsFromSheet(sheet, limit) {
     var toVal = String(rowValues[toCol] || "").trim();
     var rawAmt = rowValues[amtCol];
     var rawDate = rowValues[dateCol];
+    var rawM = colMValues[i] ? colMValues[i][0] : false;
+    var isSkip = (rawM === true || String(rawM).trim().toLowerCase() === "true" || rawM === 1);
     
     var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
     var amt = parseFloat(cleanAmt);
@@ -247,7 +251,8 @@ function getRecentTransactionsFromSheet(sheet, limit) {
       category: cat,
       from: fromVal,
       to: toVal,
-      amount: amt
+      amount: amt,
+      skip: isSkip
     });
     
     if (list.length >= limit) break;
@@ -288,6 +293,7 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
 
     var numRows = lastPopRow - startRow + 1;
     var values = sh.getRange(startRow, 1, numRows, 6).getValues();
+    var colMValues = sh.getRange(startRow, CONFIG.COL.SKIP, numRows, 1).getValues();
 
     for (var i = 0; i < values.length; i++) {
       var rowValues = values[i];
@@ -299,6 +305,8 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
       var fromVal = String(rowValues[fromCol] || "").trim();
       var toVal = String(rowValues[toCol] || "").trim();
       var rawAmt = rowValues[amtCol];
+      var rawM = colMValues[i] ? colMValues[i][0] : false;
+      var isSkip = (rawM === true || String(rawM).trim().toLowerCase() === "true" || rawM === 1);
 
       var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
       var amt = parseFloat(cleanAmt);
@@ -329,6 +337,7 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
         from: fromVal,
         to: toVal,
         amount: amt,
+        skip: isSkip,
         timestamp: (dateObj && !isNaN(dateObj.getTime())) ? dateObj.getTime() : 0
       });
     }
@@ -407,16 +416,21 @@ function appendTransaction(data) {
   var targetTime = normalizeDateOnly(dateVal, tz);
 
   var newRow = [dateVal, descVal, catVal, fromVal, toVal, amountVal];
+  var hasSkip = data && data.skip !== undefined ? Boolean(data.skip) : false;
   var targetRow = nextRow;
 
   if (lastPopRow < startRow) {
     sheet.getRange(startRow, 1, 1, maxCol).setValues([newRow]);
     sheet.getRange(startRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(startRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
+    if (hasSkip) {
+      sheet.getRange(startRow, CONFIG.COL.SKIP).setValue(true);
+    }
     targetRow = startRow;
   } else {
     var count = lastPopRow - startRow + 1;
     var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
+    var colMValues = sheet.getRange(startRow, CONFIG.COL.SKIP, count, 1).getValues();
     
     var insertIndex = allRows.length;
     if (targetTime > 0) {
@@ -439,13 +453,18 @@ function appendTransaction(data) {
       sheet.getRange(nextRow, 1, 1, maxCol).setValues([newRow]);
       sheet.getRange(nextRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
       sheet.getRange(nextRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
+      if (hasSkip) {
+        sheet.getRange(nextRow, CONFIG.COL.SKIP).setValue(true);
+      }
       targetRow = nextRow;
     } else {
       allRows.splice(insertIndex, 0, newRow);
+      colMValues.splice(insertIndex, 0, [hasSkip]);
       if ((startRow + allRows.length - 1) > sheet.getMaxRows()) {
         sheet.insertRowsAfter(sheet.getMaxRows(), 50);
       }
       sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+      sheet.getRange(startRow, CONFIG.COL.SKIP, colMValues.length, 1).setValues(colMValues);
       sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
       sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
       targetRow = startRow + insertIndex;
@@ -467,7 +486,8 @@ function appendTransaction(data) {
       category: catVal,
       from: fromVal,
       to: toVal,
-      amount: amountVal
+      amount: amountVal,
+      skip: hasSkip
     }
   };
 }
@@ -502,6 +522,7 @@ function editTransaction(data) {
 
   var count = lastPopRow - startRow + 1;
   var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
+  var colMValues = sheet.getRange(startRow, CONFIG.COL.SKIP, count, 1).getValues();
 
   var origDesc = orig.description ? String(orig.description).trim().toLowerCase() : "";
   var origAmt = parseFloat(String(orig.amount || "").replace(/[^0-9.-]/g, ""));
@@ -572,6 +593,9 @@ function editTransaction(data) {
     sheet.getRange(targetRow, 1, 1, maxCol).setValues([newRowValues]);
     sheet.getRange(targetRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
+    if (updated && updated.skip !== undefined) {
+      sheet.getRange(targetRow, CONFIG.COL.SKIP).setValue(Boolean(updated.skip));
+    }
     clearTransactionBorders(sheet);
     SpreadsheetApp.flush();
     return {
@@ -587,16 +611,24 @@ function editTransaction(data) {
   // Case 2: Date changed to a different year sheet
   var newSheet = getTargetSheet(updated.date);
   if (newSheet.getName() !== sheet.getName()) {
+    var rawOldM2 = colMValues[targetIndex] ? colMValues[targetIndex][0] : false;
+    var targetSkip2 = (updated && updated.skip !== undefined) ? Boolean(updated.skip) : (rawOldM2 === true || String(rawOldM2).toLowerCase() === "true" || rawOldM2 === 1);
+
     allRows.splice(targetIndex, 1);
+    colMValues.splice(targetIndex, 1);
     
     var writeMatrix = [];
+    var writeMatrixM = [];
     for (var w = 0; w < allRows.length; w++) {
       writeMatrix.push(allRows[w]);
+      writeMatrixM.push(colMValues[w]);
     }
     while (writeMatrix.length < count) {
       writeMatrix.push(["", "", "", "", "", ""]);
+      writeMatrixM.push([""]);
     }
     sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
+    sheet.getRange(startRow, CONFIG.COL.SKIP, writeMatrixM.length, 1).setValues(writeMatrixM);
 
     if (allRows.length > 0) {
       sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
@@ -610,6 +642,10 @@ function editTransaction(data) {
         var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
         clearRange.clearContent();
         clearRange.clear({ contentsOnly: true });
+
+        var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
+        clearRangeM.clearContent();
+        clearRangeM.clear({ contentsOnly: true });
       } catch (e) {}
     }
     clearTransactionBorders(sheet);
@@ -621,7 +657,8 @@ function editTransaction(data) {
       category: newCatVal,
       from: newFromVal,
       to: newToVal,
-      amount: newAmountVal
+      amount: newAmountVal,
+      skip: targetSkip2
     });
 
     return {
@@ -635,7 +672,12 @@ function editTransaction(data) {
   }
 
   // Case 3: Date changed within the same sheet
+  var rawOldM3 = colMValues[targetIndex] ? colMValues[targetIndex][0] : false;
+  var targetSkip3 = (updated && updated.skip !== undefined) ? Boolean(updated.skip) : (rawOldM3 === true || String(rawOldM3).toLowerCase() === "true" || rawOldM3 === 1);
+
   allRows.splice(targetIndex, 1);
+  colMValues.splice(targetIndex, 1);
+
   var newTargetTime = normalizeDateOnly(newDateVal, tz);
   var insertIndex = allRows.length;
   if (newTargetTime > 0) {
@@ -652,7 +694,10 @@ function editTransaction(data) {
   }
 
   allRows.splice(insertIndex, 0, newRowValues);
+  colMValues.splice(insertIndex, 0, [targetSkip3]);
+
   sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
+  sheet.getRange(startRow, CONFIG.COL.SKIP, colMValues.length, 1).setValues(colMValues);
   sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
   sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
   clearTransactionBorders(sheet);
@@ -699,6 +744,7 @@ function deleteLastMatchingTransaction(data) {
   
   var count = lastPopRow - startRow + 1;
   var allRows = sheet.getRange(startRow, 1, count, maxCol).getValues();
+  var colMValues = sheet.getRange(startRow, CONFIG.COL.SKIP, count, 1).getValues();
   
   var deleteIndex = -1;
   var dateCol = CONFIG.COL.DATE - 1;
@@ -790,20 +836,26 @@ function deleteLastMatchingTransaction(data) {
   
   var clearedRow = startRow + deleteIndex;
   allRows.splice(deleteIndex, 1);
+  colMValues.splice(deleteIndex, 1);
 
   // Construct complete atomic matrix of length `count`
   // Compacted rows first, followed by empty rows ["", "", "", "", "", ""]
   // up to original count to guarantee trailing rows are explicitly overwritten.
   var writeMatrix = [];
+  var writeMatrixM = [];
   for (var w = 0; w < allRows.length; w++) {
     writeMatrix.push(allRows[w]);
+    writeMatrixM.push(colMValues[w]);
   }
   while (writeMatrix.length < count) {
     writeMatrix.push(["", "", "", "", "", ""]);
+    writeMatrixM.push([""]);
   }
 
   // Atomically overwrite columns A-F across all original rows
   sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
+  // Atomically overwrite column M across all original rows
+  sheet.getRange(startRow, CONFIG.COL.SKIP, writeMatrixM.length, 1).setValues(writeMatrixM);
 
   // Re-apply number formatting to remaining populated rows
   if (allRows.length > 0) {
@@ -819,6 +871,10 @@ function deleteLastMatchingTransaction(data) {
       var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
       clearRange.clearContent();
       clearRange.clear({ contentsOnly: true });
+
+      var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
+      clearRangeM.clearContent();
+      clearRangeM.clear({ contentsOnly: true });
     } catch (e) {}
   }
 
@@ -858,14 +914,22 @@ function batchProcessTransactions(data) {
     var maxCol = CONFIG.MAX_COL;
     
     var matrix = [];
+    var matrixM = [];
+    var hasAnySkip = false;
     for (var r = 0; r < rows.length; r++) {
       var it = rows[r];
       matrix.push([it.dateVal, it.descVal, it.catVal, it.fromVal, it.toVal, it.amountVal]);
+      var s = Boolean(it.skip);
+      if (s) hasAnySkip = true;
+      matrixM.push([s ? true : ""]);
     }
     
     sheet.getRange(targetRow, 1, matrix.length, maxCol).setValues(matrix);
     sheet.getRange(targetRow, CONFIG.COL.DATE, matrix.length, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, CONFIG.COL.AMOUNT, matrix.length, 1).setNumberFormat("$#,##0.00");
+    if (hasAnySkip) {
+      sheet.getRange(targetRow, CONFIG.COL.SKIP, matrixM.length, 1).setValues(matrixM);
+    }
     clearTransactionBorders(sheet);
     sheetInfo.rows = [];
   }
@@ -905,13 +969,15 @@ function batchProcessTransactions(data) {
       var amountVal = parseFloat(it.amount);
       if (isNaN(amountVal)) amountVal = 0.00;
 
+      var hasSkip = it.skip !== undefined ? Boolean(it.skip) : false;
       addsBySheet[sheetName].rows.push({
         dateVal: dateVal,
         descVal: descVal,
         catVal: catVal,
         fromVal: fromVal,
         toVal: toVal,
-        amountVal: amountVal
+        amountVal: amountVal,
+        skip: hasSkip
       });
       processedCount++;
     }

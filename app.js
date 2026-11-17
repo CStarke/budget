@@ -128,6 +128,8 @@
     qfToBtnText: document.getElementById("qfToBtnText"),
     btnSaveQuickFillOption: document.getElementById("btnSaveQuickFillOption"),
     btnDeleteQuickFillOption: document.getElementById("btnDeleteQuickFillOption"),
+    qfSkipRow: document.getElementById("qfSkipRow"),
+    qfSkipToggle: document.getElementById("qfSkipToggle"),
 
     // All Transactions View
     btnSeeAllTransactions: document.getElementById("btnSeeAllTransactions"),
@@ -957,7 +959,8 @@
       const meta = document.createElement("div");
       meta.className = "recent-meta";
       const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
-      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}`;
+      const skipSuffix = item.skip ? " · Skipped" : "";
+      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}${skipSuffix}`;
 
       info.appendChild(desc);
       info.appendChild(meta);
@@ -2156,6 +2159,7 @@
     editorTxDate = "";
 
     if (elements.qfDateField) elements.qfDateField.style.display = "none";
+    if (elements.qfSkipRow) elements.qfSkipRow.style.display = "none";
     if (elements.qfCategoryHeaderLabel) elements.qfCategoryHeaderLabel.textContent = "Autofill Values";
 
     if (opt) {
@@ -2201,6 +2205,12 @@
     if (elements.qfDateText) elements.qfDateText.textContent = formatHumanDate(editorTxDate);
     if (elements.qfDatePicker) elements.qfDatePicker.value = editorTxDate;
     if (elements.qfCategoryHeaderLabel) elements.qfCategoryHeaderLabel.textContent = "Category & Accounts";
+    if (elements.qfSkipRow) {
+      elements.qfSkipRow.style.display = "flex";
+      if (elements.qfSkipToggle) {
+        elements.qfSkipToggle.checked = Boolean(tx.skip);
+      }
+    }
 
     elements.qfEditorTitle.textContent = "Edit Transaction";
     elements.btnSaveQuickFillOption.textContent = "Save Changes";
@@ -2258,15 +2268,18 @@
 
     const orig = editorTxOriginal || {};
     const updatedDate = editorTxDate || orig.date || getFormattedDate(new Date());
+    const isSkip = Boolean(elements.qfSkipToggle && elements.qfSkipToggle.checked);
     const updatedTx = {
       id: orig.id,
+      sheetName: orig.sheetName || null,
       row: orig.row,
       date: updatedDate,
       description: title,
       amount: amount,
       category: qfEditorState.category || "",
       from: qfEditorState.from || "",
-      to: qfEditorState.to || ""
+      to: qfEditorState.to || "",
+      skip: isSkip
     };
 
     // Check if anything actually changed
@@ -2276,8 +2289,9 @@
     const catChanged = (orig.category || "") !== updatedTx.category;
     const fromChanged = (orig.from || "") !== updatedTx.from;
     const toChanged = (orig.to || "") !== updatedTx.to;
+    const skipChanged = Boolean(orig.skip) !== isSkip;
 
-    if (!dateChanged && !descChanged && !amtChanged && !catChanged && !fromChanged && !toChanged) {
+    if (!dateChanged && !descChanged && !amtChanged && !catChanged && !fromChanged && !toChanged && !skipChanged) {
       closeQuickFillEditor();
       return;
     }
@@ -2323,7 +2337,8 @@
         amount: updatedTx.amount,
         category: updatedTx.category,
         from: updatedTx.from,
-        to: updatedTx.to
+        to: updatedTx.to,
+        skip: updatedTx.skip
       };
       saveOfflineQueue(queue);
       updateQueueUI();
@@ -3227,7 +3242,8 @@
         const meta = document.createElement("div");
         meta.className = "recent-meta";
         const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
-        meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}`;
+        const skipSuffix = item.skip ? " · Skipped" : "";
+        meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}${skipSuffix}`;
 
         info.appendChild(desc);
         info.appendChild(meta);
