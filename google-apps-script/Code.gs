@@ -493,14 +493,30 @@ function editTransaction(data) {
   var newSheet = getTargetSheet(updated.date);
   if (newSheet.getName() !== sheet.getName()) {
     allRows.splice(targetIndex, 1);
+    
+    var writeMatrix = [];
+    for (var w = 0; w < allRows.length; w++) {
+      writeMatrix.push(allRows[w]);
+    }
+    while (writeMatrix.length < count) {
+      writeMatrix.push(["", "", "", "", "", ""]);
+    }
+    sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
+
     if (allRows.length > 0) {
-      sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
       sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
       sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
     }
+
     var trailingRow = startRow + allRows.length;
-    var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
-    sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+    var rowsToClear = count - allRows.length;
+    if (rowsToClear > 0) {
+      try {
+        var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
+        clearRange.clearContent();
+        clearRange.clear({ contentsOnly: true });
+      } catch (e) {}
+    }
     clearTransactionBorders(sheet);
     SpreadsheetApp.flush();
 
@@ -600,10 +616,26 @@ function deleteLastMatchingTransaction(data) {
       var hDesc = String(allRows[hIdx][descCol] || "").trim().toLowerCase();
       var hAmt = parseFloat(String(allRows[hIdx][amtCol] || "").replace(/[^0-9.-]/g, ""));
       var hDateComp = formatComparableDate(hRawDate, tz);
-      if ((!targetDesc || hDesc === targetDesc || (targetDesc === "untitled" && !hDesc)) &&
-          (isNaN(targetAmt) || Math.abs(hAmt - targetAmt) < 0.01) &&
-          (!targetDateComp || hDateComp === targetDateComp)) {
+      var descMatch = (!targetDesc || hDesc === targetDesc || (targetDesc === "untitled" && !hDesc));
+      var amtMatch = (isNaN(targetAmt) || Math.abs(hAmt - targetAmt) < 0.01);
+      var dateMatch = (!targetDateComp || hDateComp === targetDateComp);
+      if (descMatch && amtMatch && dateMatch) {
         deleteIndex = hIdx;
+      }
+    }
+  }
+
+  // 1b. If hintRow is valid and description/amount match (ignoring minor date timezone mismatch)
+  if (deleteIndex === -1 && hintRow && hintRow >= startRow && hintRow <= lastPopRow) {
+    var hIdxB = hintRow - startRow;
+    var hRawDateB = allRows[hIdxB][dateCol];
+    if (hRawDateB !== null && hRawDateB !== undefined && String(hRawDateB).trim() !== "") {
+      var hDescB = String(allRows[hIdxB][descCol] || "").trim().toLowerCase();
+      var hAmtB = parseFloat(String(allRows[hIdxB][amtCol] || "").replace(/[^0-9.-]/g, ""));
+      var dMatchB = (!targetDesc || hDescB === targetDesc || (targetDesc === "untitled" && !hDescB));
+      var aMatchB = (isNaN(targetAmt) || Math.abs(hAmtB - targetAmt) < 0.01);
+      if (dMatchB && aMatchB) {
+        deleteIndex = hIdxB;
       }
     }
   }
@@ -662,15 +694,37 @@ function deleteLastMatchingTransaction(data) {
   var clearedRow = startRow + deleteIndex;
   allRows.splice(deleteIndex, 1);
 
+  // Construct complete atomic matrix of length `count`
+  // Compacted rows first, followed by empty rows ["", "", "", "", "", ""]
+  // up to original count to guarantee trailing rows are explicitly overwritten.
+  var writeMatrix = [];
+  for (var w = 0; w < allRows.length; w++) {
+    writeMatrix.push(allRows[w]);
+  }
+  while (writeMatrix.length < count) {
+    writeMatrix.push(["", "", "", "", "", ""]);
+  }
+
+  // Atomically overwrite columns A-F across all original rows
+  sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
+
+  // Re-apply number formatting to remaining populated rows
   if (allRows.length > 0) {
-    sheet.getRange(startRow, 1, allRows.length, maxCol).setValues(allRows);
     sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
     sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
   }
 
+  // Explicitly clear content and contentsOnly on the trailing cleared rows as belt-and-suspenders
   var trailingRow = startRow + allRows.length;
-  var rowsToClear = Math.max(1, lastPopRow - trailingRow + 1);
-  sheet.getRange(trailingRow, 1, rowsToClear, maxCol).clearContent();
+  var rowsToClear = count - allRows.length;
+  if (rowsToClear > 0) {
+    try {
+      var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
+      clearRange.clearContent();
+      clearRange.clear({ contentsOnly: true });
+    } catch (e) {}
+  }
+
   clearTransactionBorders(sheet);
   SpreadsheetApp.flush();
   return { 
