@@ -1,5 +1,6 @@
 /* Modern Mobile Styles for Budget App */
 :root {
+  color-scheme: dark;
   --bg-primary: #090d16;
   --bg-card: #131b2e;
   --bg-card-hover: #1e293b;
@@ -106,6 +107,7 @@ input, button, textarea {
 
 html, body {
   background-color: var(--bg-primary);
+  color-scheme: dark;
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--text-primary);

@@ -1,5 +1,5 @@
 /**
- * Service Worker for "Budget" PWA (v71)
+ * Service Worker for "Budget" PWA (v72)
  * 
  * Strategy: Cache-First for App Shell + Stale-While-Revalidate
  * - Offline-First: The app shell loads instantly (<50ms) even in Airplane Mode or with zero reception.
@@ -8,7 +8,7 @@
  * - Google Apps Script: Passed directly to network (offline queue handles offline logging).
  */
 
-const CACHE_NAME = "budget-app-v71";
+const CACHE_NAME = "budget-app-v72";
 const APP_SHELL = [
   "./",
   "./index.html",
