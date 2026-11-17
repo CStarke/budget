@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v83";
+  const APP_VERSION = "v84";
 
   // State
   const state = {
@@ -3237,6 +3237,9 @@
     }
 
     elements.allTransactionsContainer.appendChild(fragment);
+    if (elements.allTxSentinel) {
+      elements.allTransactionsContainer.appendChild(elements.allTxSentinel);
+    }
     allTxRenderOffset += chunk.length;
   }
 
