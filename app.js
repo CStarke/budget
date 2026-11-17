@@ -1419,44 +1419,27 @@
     }
     showToast("Purging cache & checking for updates...", "info");
 
-    let refreshing = false;
-    const triggerReload = () => {
-      if (refreshing) return;
-      refreshing = true;
-      const targetUrl = window.location.origin + window.location.pathname + `?v=${Date.now()}`;
-      window.location.replace(targetUrl);
-    };
+    try {
+      // 1. Unregister active service workers so they immediately release control
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+          await reg.unregister();
+        }
+      }
 
-    // 1. Purge Cache Storage to eliminate stale app-shell files
-    if ("caches" in window) {
-      try {
+      // 2. Purge Cache Storage to eliminate stale app-shell files
+      if ("caches" in window) {
         const keys = await caches.keys();
         await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch (e) {
-        console.warn("Could not purge caches:", e);
       }
+    } catch (e) {
+      console.warn("Could not unregister or purge caches:", e);
     }
 
-    // 2. Check Service Worker update & listen for controllerchange
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        triggerReload();
-      });
-
-      try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg) {
-          await reg.update();
-        }
-      } catch (e) {
-        console.warn("Could not update service worker:", e);
-      }
-    }
-
-    // 3. Fallback: reload after 700ms if controllerchange didn't fire
-    setTimeout(() => {
-      triggerReload();
-    }, 700);
+    // 3. Hard navigate to cache-busted URL so Fastly CDN and browser HTTP cache are bypassed
+    const targetUrl = window.location.origin + window.location.pathname + `?v=${Date.now()}`;
+    window.location.replace(targetUrl);
   }
 
   if (elements.brandLogo) {
@@ -3634,7 +3617,7 @@
   // Register Service Worker for PWA (Firefox / Chrome / Safari)
   if ("serviceWorker" in navigator) {
     const registerSW = () => {
-      navigator.serviceWorker.register("./sw.js").then((reg) => {
+      navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((reg) => {
         if (navigator.onLine) {
           reg.update();
         }

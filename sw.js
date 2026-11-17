@@ -13,7 +13,9 @@ const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
+  "./style.css?v=v76",
   "./app.js",
+  "./app.js?v=v76",
   "./manifest.json",
   "./icons/icon.svg",
   "./icons/brand-logo.svg"
@@ -57,6 +59,25 @@ self.addEventListener("fetch", (event) => {
   // B. Navigation Requests (Opening the app, refreshing, launching from home screen):
   // Return cached index.html immediately so the app launches with ZERO delay offline
   if (event.request.mode === "navigate") {
+    // If cache-busting parameter present (?v=...), always fetch fresh from network
+    if (url.searchParams.has("v")) {
+      event.respondWith(
+        fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const clone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put("./index.html", clone);
+                cache.put("./", networkResponse.clone());
+              });
+            }
+            return networkResponse;
+          })
+          .catch(() => caches.match("./index.html", { ignoreSearch: true }))
+      );
+      return;
+    }
+
     event.respondWith(
       caches.match(event.request, { ignoreSearch: true })
         .then((cachedResponse) => {
@@ -110,21 +131,27 @@ self.addEventListener("fetch", (event) => {
   // Stale-While-Revalidate: Serve from cache immediately, update cache in background
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, clone);
-              });
-            }
-            return networkResponse;
-          })
-          .catch(() => null);
+      caches.match(event.request).then((exactMatch) => {
+        const matchPromise = exactMatch
+          ? Promise.resolve(exactMatch)
+          : caches.match(event.request, { ignoreSearch: true });
 
-        // Return cached version immediately if available; otherwise wait for network
-        return cachedResponse || fetchPromise;
+        return matchPromise.then((cachedResponse) => {
+          const fetchPromise = fetch(event.request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(event.request, clone);
+                });
+              }
+              return networkResponse;
+            })
+            .catch(() => null);
+
+          // Return cached version immediately if available; otherwise wait for network
+          return cachedResponse || fetchPromise;
+        });
       })
     );
     return;
