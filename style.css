@@ -108,13 +108,16 @@ input, button, textarea {
 html, body {
   background-color: var(--bg-primary);
   color-scheme: dark;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
   color: var(--text-primary);
   font-family: var(--font-family);
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
   line-height: 1.5;
 }
 
@@ -123,12 +126,26 @@ html, body {
   max-width: 480px;
   margin: 0 auto;
   width: 100%;
-  padding-top: max(16px, calc(var(--safe-top) + 8px));
-  padding-bottom: max(24px, calc(var(--safe-bottom) + 24px));
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding-top: max(14px, calc(var(--safe-top) + 6px));
+  padding-bottom: max(14px, calc(var(--safe-bottom) + 8px));
   padding-left: max(16px, var(--safe-left));
   padding-right: max(16px, var(--safe-right));
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.entry-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Header */
@@ -621,6 +638,7 @@ html, body {
 .btn-submit {
   width: 100%;
   background: var(--accent-gradient);
+  background-color: var(--accent-color);
   color: #ffffff;
   border: none;
   padding: 16px;
@@ -634,7 +652,7 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
 }
 
 .btn-submit:active {
@@ -853,6 +871,10 @@ html, body {
   border-radius: 24px 24px 0 0;
   width: 100%;
   max-width: 480px;
+  max-height: 90vh;
+  max-height: 90dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 24px 20px calc(var(--safe-bottom) + 24px) 20px;
   transform: translateY(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1043,6 +1065,7 @@ html, body {
 .btn-save-settings {
   width: 100%;
   background: var(--accent-gradient);
+  background-color: var(--accent-color);
   color: #ffffff;
   border: none;
   padding: 13px;
@@ -1051,6 +1074,8 @@ html, body {
   font-weight: 600;
   cursor: pointer;
   margin-top: 8px;
+  box-shadow: 0 4px 14px var(--accent-glow);
+  transition: all 0.3s ease;
 }
 
 .btn-save-settings:active {
@@ -1072,6 +1097,23 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-qf-settings {
+  margin-top: 10px;
+  border-color: var(--accent-border);
+  color: var(--accent-color);
+  background: var(--bg-card);
+  transition: all 0.3s ease;
+}
+
+.btn-qf-settings:hover {
+  background: var(--accent-glow);
+}
+
+.btn-qf-settings:active {
+  transform: scale(0.98);
 }
 
 .settings-version-footer {

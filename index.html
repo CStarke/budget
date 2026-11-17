@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=v79">
+  <link rel="stylesheet" href="style.css?v=v80">
 
   <!-- Theme Color Pre-render Script (Zero Flash) -->
   <script>
@@ -266,19 +266,6 @@
           </div>
         </div>
 
-        <div class="settings-field" id="queueSettingsSection">
-          <label class="settings-label">Offline Queue</label>
-          <div class="queue-status-text" id="queueStatusText">No pending transactions.</div>
-          <button type="button" class="btn-sync-now" id="btnSyncQueueNow" style="margin-top: 8px; display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-            Sync Pending Transactions Now
-          </button>
-        </div>
-
         <!-- Accent Color Theme Section -->
         <div class="settings-field">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -317,7 +304,7 @@
           </svg>
           Sync Dropdown Chips Now
         </button>
-        <button type="button" class="btn-sync-now" id="btnOpenQuickFillSettings" style="margin-top: 10px; border-color: var(--accent-glow); color: var(--accent-color);">
+        <button type="button" class="btn-sync-now btn-qf-settings" id="btnOpenQuickFillSettings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
@@ -326,7 +313,7 @@
         </button>
 
         <div class="settings-version-footer" style="text-align: right; width: 100%; margin-top: 10px; margin-bottom: -8px;">
-          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v79</span>
+          <span class="settings-version-tag" id="settingsVersion" style="font-size: 10px; font-weight: 500; color: #475569; letter-spacing: 0.3px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; pointer-events: none;">v80</span>
         </div>
       </div>
     </div>
@@ -736,6 +723,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=v79"></script>
+  <script src="app.js?v=v80"></script>
 </body>
 </html>
