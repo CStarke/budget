@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v97";
+  const APP_VERSION = "v98";
 
   // State
   const state = {
@@ -177,13 +177,16 @@
       elements.allTransactionsModal &&
       elements.allTransactionsModal.classList.contains("open")
     );
-    const isModalOpen = [
+    const isAllTxFilterOpen = Boolean(
+      elements.allTxFilterModal &&
+      elements.allTxFilterModal.classList.contains("open")
+    );
+    const isBottomSheetModalOpen = [
       elements.recentModal,
       elements.settingsModal,
       elements.quickFillSettingsModal,
       elements.transactionEditorModal,
-      elements.importPresetsModal,
-      elements.allTxFilterModal
+      elements.importPresetsModal
     ].some((modal) => modal && modal.classList.contains("open"));
     const isPickerOpen = Boolean(
       elements.pickerOverlay &&
@@ -193,13 +196,19 @@
     let topColor = SYSTEM_BAR_COLORS.mainPage;
     let bottomColor = SYSTEM_BAR_COLORS.mainPage;
 
-    if (isModalOpen) {
+    if (isAllTxOpen) {
+      if (isAllTxFilterOpen || isPickerOpen) {
+        // Filter modal or picker overlay open on top of All Transactions
+        topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
+        bottomColor = SYSTEM_BAR_COLORS.modalSurface;
+      } else {
+        // All Transactions full-screen surface (clean #111827)
+        topColor = SYSTEM_BAR_COLORS.modalSurface;
+        bottomColor = SYSTEM_BAR_COLORS.modalSurface;
+      }
+    } else if (isBottomSheetModalOpen) {
       // Bottom sheet modal: Top bar darkens with scrim (#000000), Bottom navbar matches modal sheet (#111827)
       topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
-      bottomColor = SYSTEM_BAR_COLORS.modalSurface;
-    } else if (isAllTxOpen) {
-      // All Transactions full-screen: Both top and bottom match All Transactions surface (#111827)
-      topColor = SYSTEM_BAR_COLORS.modalSurface;
       bottomColor = SYSTEM_BAR_COLORS.modalSurface;
     } else if (isPickerOpen) {
       // Chip selector overlay: Top and bottom darken with overlay (#000000)
