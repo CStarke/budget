@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v96";
+  const APP_VERSION = "v97";
 
   // State
   const state = {
@@ -163,6 +163,64 @@
     btnApplyAllTxFilters: document.getElementById("btnApplyAllTxFilters"),
     btnResetAllTxFilters: document.getElementById("btnResetAllTxFilters")
   };
+
+  // System Bar Colors Synchronization (Top status bar & Bottom navbar section)
+  // =========================================================================
+  const SYSTEM_BAR_COLORS = {
+    mainPage: "#090d16",
+    darkenedBackdrop: "#000000",
+    modalSurface: "#111827"
+  };
+
+  function syncSystemBarColors() {
+    const isAllTxOpen = Boolean(
+      elements.allTransactionsModal &&
+      elements.allTransactionsModal.classList.contains("open")
+    );
+    const isModalOpen = [
+      elements.recentModal,
+      elements.settingsModal,
+      elements.quickFillSettingsModal,
+      elements.transactionEditorModal,
+      elements.importPresetsModal,
+      elements.allTxFilterModal
+    ].some((modal) => modal && modal.classList.contains("open"));
+    const isPickerOpen = Boolean(
+      elements.pickerOverlay &&
+      elements.pickerOverlay.classList.contains("open")
+    );
+
+    let topColor = SYSTEM_BAR_COLORS.mainPage;
+    let bottomColor = SYSTEM_BAR_COLORS.mainPage;
+
+    if (isModalOpen) {
+      // Bottom sheet modal: Top bar darkens with scrim (#000000), Bottom navbar matches modal sheet (#111827)
+      topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
+      bottomColor = SYSTEM_BAR_COLORS.modalSurface;
+    } else if (isAllTxOpen) {
+      // All Transactions full-screen: Both top and bottom match All Transactions surface (#111827)
+      topColor = SYSTEM_BAR_COLORS.modalSurface;
+      bottomColor = SYSTEM_BAR_COLORS.modalSurface;
+    } else if (isPickerOpen) {
+      // Chip selector overlay: Top and bottom darken with overlay (#000000)
+      topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
+      bottomColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
+    } else {
+      // Main page (default): Both top and bottom match main page (#090d16)
+      topColor = SYSTEM_BAR_COLORS.mainPage;
+      bottomColor = SYSTEM_BAR_COLORS.mainPage;
+    }
+
+    // Update top status bar / address bar
+    const metaTag = document.getElementById("appThemeColor") || document.querySelector('meta[name="theme-color"]');
+    if (metaTag) {
+      metaTag.setAttribute("content", topColor);
+    }
+
+    // Update bottom navbar section / root canvas
+    document.documentElement.style.backgroundColor = bottomColor;
+    document.body.style.backgroundColor = bottomColor;
+  }
 
   // Default fallback options if sheet hasn't synced yet
   const DEFAULT_OPTIONS = {
@@ -519,11 +577,13 @@
     }
 
     elements.pickerOverlay.classList.add("open");
+    syncSystemBarColors();
   }
 
   function closePicker() {
     elements.pickerOverlay.classList.remove("open");
     activePickerField = null;
+    syncSystemBarColors();
   }
 
   function highlightError(element) {
@@ -877,6 +937,7 @@
     renderRecentList();
     if (elements.recentModal) {
       elements.recentModal.classList.add("open");
+      syncSystemBarColors();
     }
     fetchRecentTransactionsFromSheet();
   }
@@ -884,6 +945,7 @@
   function closeRecentModal() {
     if (elements.recentModal) {
       elements.recentModal.classList.remove("open");
+      syncSystemBarColors();
     }
   }
 
@@ -1264,10 +1326,12 @@
     updateQueueUI();
     updateThemeUI();
     elements.settingsModal.classList.add("open");
+    syncSystemBarColors();
   }
 
   function closeSettings() {
     elements.settingsModal.classList.remove("open");
+    syncSystemBarColors();
   }
 
   function saveSettings() {
@@ -1853,10 +1917,12 @@
   function openQuickFillSettings() {
     renderQuickFillSettingsList();
     elements.quickFillSettingsModal.classList.add("open");
+    syncSystemBarColors();
   }
 
   function closeQuickFillSettings() {
     elements.quickFillSettingsModal.classList.remove("open");
+    syncSystemBarColors();
   }
 
   function renderQuickFillSettingsList() {
@@ -2158,6 +2224,7 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.transactionEditorModal.classList.add("open");
+    syncSystemBarColors();
   }
 
   function openTransactionEditor(tx) {
@@ -2207,11 +2274,13 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.transactionEditorModal.classList.add("open");
+    syncSystemBarColors();
     haptic(15);
   }
 
   function closeQuickFillEditor() {
     elements.transactionEditorModal.classList.remove("open");
+    syncSystemBarColors();
   }
 
   function saveEditedTransaction() {
@@ -2555,11 +2624,17 @@
     if (elements.importConflictView) elements.importConflictView.style.display = "none";
     if (elements.importFallbackContainer) elements.importFallbackContainer.style.display = "none";
     if (elements.importFallbackTextarea) elements.importFallbackTextarea.value = "";
-    if (elements.importPresetsModal) elements.importPresetsModal.classList.add("open");
+    if (elements.importPresetsModal) {
+      elements.importPresetsModal.classList.add("open");
+      syncSystemBarColors();
+    }
   }
 
   function closeImportModal() {
-    if (elements.importPresetsModal) elements.importPresetsModal.classList.remove("open");
+    if (elements.importPresetsModal) {
+      elements.importPresetsModal.classList.remove("open");
+      syncSystemBarColors();
+    }
   }
 
   async function handlePasteClipboardClick() {
@@ -3257,10 +3332,12 @@
     syncDraftWithActiveFilter();
     updateFilterModalUI();
     elements.allTxFilterModal.classList.add("open");
+    syncSystemBarColors();
   }
 
   function closeAllTxFilterModal() {
     elements.allTxFilterModal.classList.remove("open");
+    syncSystemBarColors();
   }
 
   function syncDraftWithActiveFilter() {
@@ -3343,6 +3420,7 @@
     haptic(15);
     if (elements.allTransactionsModal) {
       elements.allTransactionsModal.classList.add("open");
+      syncSystemBarColors();
     }
 
     try {
@@ -3364,6 +3442,7 @@
   function closeAllTransactionsPage() {
     if (elements.allTransactionsModal) {
       elements.allTransactionsModal.classList.remove("open");
+      syncSystemBarColors();
     }
   }
 
@@ -3585,6 +3664,7 @@
 
   // Init
   initTheme();
+  syncSystemBarColors();
   setDate(getFormattedDate(new Date()));
   updateAllButtons();
   updateDefaultButtons();
