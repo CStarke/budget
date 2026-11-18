@@ -27,6 +27,25 @@ Budget is built for quick, simple expense logging on your phone:
 
 ---
 
+## How From and To Accounts Work
+
+Every transaction in Budget is tracked as money moving from a source (**From**) to a destination (**To**). This single concept handles spending, income, and transfers:
+
+- **Spending (Expenses)**:
+  - **From**: The account you paid with (e.g., `Checking`, `Credit Card`, `Cash`).
+  - **To**: `Spending`.
+  - Money leaves your account and counts toward your spending. In the app's recent transactions list, this shows up in **Red**.
+- **Income**:
+  - **From**: `Income`.
+  - **To**: The account where the money was deposited (e.g., `Checking`, `Savings`).
+  - Money enters your account and increases your balance. In the app, this shows up in **Green**.
+- **Transfers (Between Accounts)**:
+  - **From**: The sending account (e.g., `Checking`).
+  - **To**: The receiving account (e.g., `Savings`, `Credit Card`, `Venmo`).
+  - Money shifts between your accounts without changing your overall net worth. In the app, this shows up in **Yellow**.
+
+---
+
 ## Step-by-Step Setup Guide
 
 Follow these steps to get your sheet connected to the mobile app:
@@ -42,19 +61,18 @@ Follow these steps to get your sheet connected to the mobile app:
 ### Step 2: Deploy the Google Apps Script Web App
 
 1. In your copied Google Sheet, open **Extensions > Apps Script**.
-2. *(Recommended)* In the left sidebar, click the **+** button next to **Services**, select **Google Sheets API**, and click **Add**. This lets the script talk directly to Google's native table engine.
-3. Click the blue **Deploy** button in the top right and select **New deployment**.
-4. In the deployment window, click the gear icon (next to *Select type*) and pick **Web app**.
-5. Set the options:
+2. Click the blue **Deploy** button in the top right and select **New deployment**.
+3. In the deployment window, click the gear icon (next to *Select type*) and pick **Web app**.
+4. Set the options:
    - **Description**: `Budget Backend` (or whatever you'd like to call it)
    - **Execute as**: `Me (<your-email>)`
    - **Who has access**: `Anyone` *(This allows your phone's browser to send entries to the script without needing to sign in with OAuth every time. Your sheet is still private to your Google account; only requests with your secret deployment link can read or write transactions).*
-6. Click **Deploy**.
-7. Authorize access when Google asks:
+5. Click **Deploy**.
+6. Authorize access when Google asks:
    - Click **Authorize access** and select your Google account.
    - When the *"Google hasn't verified this app"* screen shows up, click **Advanced** in the bottom left, then click **Go to Budget Helper (unsafe)**.
    - Click **Allow**.
-8. Copy the **Web App URL** (the link ending in `/exec`).
+7. Copy the **Web App URL** (the link ending in `/exec`).
 
 ---
 
