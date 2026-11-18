@@ -110,7 +110,6 @@
     qfSortableList: document.getElementById("qfSortableList"),
     qfEmptyHint: document.getElementById("qfEmptyHint"),
     transactionEditorModal: document.getElementById("transactionEditorModal"),
-    quickFillEditorModal: document.getElementById("transactionEditorModal"),
     qfEditorTitle: document.getElementById("qfEditorTitle"),
     btnCloseQuickFillEditor: document.getElementById("btnCloseQuickFillEditor"),
     qfTitleInput: document.getElementById("qfTitleInput"),
@@ -337,22 +336,12 @@
     let items = [];
     let currentValue = "";
 
-    if (field === "category") {
-      items = [...(state.options.category.length > 0 ? state.options.category : DEFAULT_OPTIONS.category)];
-      currentValue = customCurrentValue !== null
-        ? customCurrentValue
-        : (isDefault ? state.defaults.category : state.selectedCategory);
-    } else if (field === "from") {
-      items = [...(state.options.from.length > 0 ? state.options.from : DEFAULT_OPTIONS.from)];
-      currentValue = customCurrentValue !== null
-        ? customCurrentValue
-        : (isDefault ? state.defaults.from : state.selectedFrom);
-    } else if (field === "to") {
-      items = [...(state.options.to.length > 0 ? state.options.to : DEFAULT_OPTIONS.to)];
-      currentValue = customCurrentValue !== null
-        ? customCurrentValue
-        : (isDefault ? state.defaults.to : state.selectedTo);
-    }
+    const stateKey = `selected${field.charAt(0).toUpperCase() + field.slice(1)}`;
+    const fieldOptions = state.options[field] && state.options[field].length > 0 ? state.options[field] : (DEFAULT_OPTIONS[field] || []);
+    items = [...fieldOptions];
+    currentValue = customCurrentValue !== null
+      ? customCurrentValue
+      : (isDefault ? state.defaults[field] : state[stateKey]);
 
     if (isDefault || onSelectCallback) {
       items.push("(None)");
@@ -560,17 +549,12 @@
       
       const data = await response.json();
       if (data && data.success && data.options) {
-        if (data.options.category && data.options.category.length > 0) {
-          state.options.category = data.options.category;
-          localStorage.setItem("budget_options_cat", JSON.stringify(data.options.category));
-        }
-        if (data.options.from && data.options.from.length > 0) {
-          state.options.from = data.options.from;
-          localStorage.setItem("budget_options_from", JSON.stringify(data.options.from));
-        }
-        if (data.options.to && data.options.to.length > 0) {
-          state.options.to = data.options.to;
-          localStorage.setItem("budget_options_to", JSON.stringify(data.options.to));
+        const optKeyMap = { category: "cat", from: "from", to: "to" };
+        for (const [field, suffix] of Object.entries(optKeyMap)) {
+          if (data.options[field] && data.options[field].length > 0) {
+            state.options[field] = data.options[field];
+            localStorage.setItem(`budget_options_${suffix}`, JSON.stringify(data.options[field]));
+          }
         }
 
         if (data.sheetName) {
@@ -655,12 +639,13 @@
     }
   }
 
-  function enqueueTransaction(payload) {
+  function enqueueItem(action, payload) {
     const queue = getOfflineQueue();
+    const prefix = action === "undo" ? "undo_" : action === "edit" ? "edit_" : "tx_";
     const item = {
-      id: "tx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
+      id: prefix + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
       queuedAt: Date.now(),
-      action: "add",
+      action,
       ...payload
     };
     queue.push(item);
@@ -669,33 +654,9 @@
     return queue.length;
   }
 
-  function enqueueUndo(payload) {
-    const queue = getOfflineQueue();
-    const item = {
-      id: "undo_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
-      queuedAt: Date.now(),
-      action: "undo",
-      ...payload
-    };
-    queue.push(item);
-    saveOfflineQueue(queue);
-    updateQueueUI();
-    return queue.length;
-  }
-
-  function enqueueEdit(payload) {
-    const queue = getOfflineQueue();
-    const item = {
-      id: "edit_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6),
-      queuedAt: Date.now(),
-      action: "edit",
-      ...payload
-    };
-    queue.push(item);
-    saveOfflineQueue(queue);
-    updateQueueUI();
-    return queue.length;
-  }
+  function enqueueTransaction(payload) { return enqueueItem("add", payload); }
+  function enqueueUndo(payload) { return enqueueItem("undo", payload); }
+  function enqueueEdit(payload) { return enqueueItem("edit", payload); }
 
   function updateQueueUI() {
     const queue = getOfflineQueue();
@@ -926,6 +887,59 @@
     }
   }
 
+  function createTransactionRow(item) {
+    const row = document.createElement("div");
+    row.className = "recent-item";
+
+    const info = document.createElement("div");
+    info.className = "recent-info";
+
+    const desc = document.createElement("div");
+    desc.className = "recent-desc";
+    desc.textContent = item.description || "Untitled";
+
+    const meta = document.createElement("div");
+    meta.className = "recent-meta";
+    const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
+    const skipSuffix = item.skip ? " · Skipped" : "";
+    meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}${skipSuffix}`;
+
+    info.appendChild(desc);
+    info.appendChild(meta);
+
+    const right = document.createElement("div");
+    right.className = "recent-right";
+
+    const amt = document.createElement("div");
+    amt.className = "recent-amount";
+    amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
+
+    // Color coding:
+    // Red if "To" was spending
+    // Green if "From" was income
+    // Yellow if neither
+    const toVal = (item.to || "").trim().toLowerCase();
+    const fromVal = (item.from || "").trim().toLowerCase();
+
+    if (toVal === "spending") {
+      amt.style.color = "#f87171"; // Red
+    } else if (fromVal === "income") {
+      amt.style.color = "#34d399"; // Green
+    } else {
+      amt.style.color = "#facc15"; // Yellow
+    }
+
+    right.appendChild(amt);
+    row.appendChild(info);
+    row.appendChild(right);
+
+    row.addEventListener("click", () => {
+      openTransactionEditor(item);
+    });
+
+    return row;
+  }
+
   function renderRecentList() {
     if (!elements.recentList) return;
     elements.recentList.innerHTML = "";
@@ -945,57 +959,8 @@
       return;
     }
 
-    list.forEach((item, index) => {
-      const row = document.createElement("div");
-      row.className = "recent-item";
-
-      const info = document.createElement("div");
-      info.className = "recent-info";
-
-      const desc = document.createElement("div");
-      desc.className = "recent-desc";
-      desc.textContent = item.description || "Untitled";
-
-      const meta = document.createElement("div");
-      meta.className = "recent-meta";
-      const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
-      const skipSuffix = item.skip ? " · Skipped" : "";
-      meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}${skipSuffix}`;
-
-      info.appendChild(desc);
-      info.appendChild(meta);
-
-      const right = document.createElement("div");
-      right.className = "recent-right";
-
-      const amt = document.createElement("div");
-      amt.className = "recent-amount";
-      amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
-
-      // Color coding:
-      // Red if "To" was spending
-      // Green if "From" was income
-      // Yellow if neither
-      const toVal = (item.to || "").trim().toLowerCase();
-      const fromVal = (item.from || "").trim().toLowerCase();
-
-      if (toVal === "spending") {
-        amt.style.color = "#f87171"; // Red
-      } else if (fromVal === "income") {
-        amt.style.color = "#34d399"; // Green
-      } else {
-        amt.style.color = "#facc15"; // Yellow
-      }
-
-      right.appendChild(amt);
-      row.appendChild(info);
-      row.appendChild(right);
-
-      row.addEventListener("click", () => {
-        openTransactionEditor(item);
-      });
-
-      elements.recentList.appendChild(row);
+    list.forEach((item) => {
+      elements.recentList.appendChild(createTransactionRow(item));
     });
   }
 
@@ -3234,54 +3199,8 @@
           fragment.appendChild(sep);
         }
 
-        // Transaction row (identical to recent-item)
-        const row = document.createElement("div");
-        row.className = "recent-item";
-
-        const info = document.createElement("div");
-        info.className = "recent-info";
-
-        const desc = document.createElement("div");
-        desc.className = "recent-desc";
-        desc.textContent = item.description || "Untitled";
-
-        const meta = document.createElement("div");
-        meta.className = "recent-meta";
-        const dateDisplay = item.date ? formatHumanDate(item.date) : "Today";
-        const skipSuffix = item.skip ? " · Skipped" : "";
-        meta.textContent = `${dateDisplay} · ${item.category || "Uncategorized"}${skipSuffix}`;
-
-        info.appendChild(desc);
-        info.appendChild(meta);
-
-        const right = document.createElement("div");
-        right.className = "recent-right";
-
-        const amt = document.createElement("div");
-        amt.className = "recent-amount";
-        amt.textContent = "$" + parseFloat(item.amount || 0).toFixed(2);
-
-        // Color coding matching recent transactions list exactly
-        const toVal = (item.to || "").trim().toLowerCase();
-        const fromVal = (item.from || "").trim().toLowerCase();
-
-        if (toVal === "spending") {
-          amt.style.color = "#f87171"; // Red
-        } else if (fromVal === "income") {
-          amt.style.color = "#34d399"; // Green
-        } else {
-          amt.style.color = "#facc15"; // Yellow
-        }
-
-        right.appendChild(amt);
-        row.appendChild(info);
-        row.appendChild(right);
-
-        // Tap to edit/delete any past transaction
-        row.addEventListener("click", () => {
-          openTransactionEditor(item);
-        });
-
+        // Transaction row
+        const row = createTransactionRow(item);
         fragment.appendChild(row);
       } catch (rowErr) {
         console.error("Error rendering transaction row:", rowErr);

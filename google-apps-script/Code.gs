@@ -18,6 +18,7 @@ var CONFIG = {
   CATEGORY_TAB_NAME: "Category",
   START_ROW: 2,
   MAX_COL: 6,
+  RECENT_LIMIT: 6,
   COL: {
     DATE: 1,
     DESCRIPTION: 2,
@@ -187,7 +188,74 @@ function clearTransactionBorders(sheet) {
   } catch (e) {}
 }
 
-var clearAmountColumnBorders = clearTransactionBorders;
+/**
+ * Atomically compacts and writes rows to the budget sheet, padding trailing rows with blanks and clearing them.
+ */
+function compactAndWriteRows(sheet, allRows, colMValues, originalCount) {
+  var startRow = CONFIG.START_ROW;
+  var maxCol = CONFIG.MAX_COL;
+
+  var writeMatrix = [];
+  var writeMatrixM = [];
+  for (var w = 0; w < allRows.length; w++) {
+    writeMatrix.push(allRows[w]);
+    writeMatrixM.push(colMValues[w]);
+  }
+  while (writeMatrix.length < originalCount) {
+    writeMatrix.push(["", "", "", "", "", ""]);
+    writeMatrixM.push([""]);
+  }
+
+  sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
+  sheet.getRange(startRow, CONFIG.COL.SKIP, writeMatrixM.length, 1).setValues(writeMatrixM);
+
+  if (allRows.length > 0) {
+    sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
+    sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+  }
+
+  var trailingRow = startRow + allRows.length;
+  var rowsToClear = originalCount - allRows.length;
+  if (rowsToClear > 0) {
+    try {
+      var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
+      clearRange.clearContent();
+      clearRange.clear({ contentsOnly: true });
+
+      var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
+      clearRangeM.clearContent();
+      clearRangeM.clear({ contentsOnly: true });
+      try { clearRangeM.uncheck(); } catch (eU) {}
+    } catch (e) {}
+  }
+
+  clearTransactionBorders(sheet);
+  SpreadsheetApp.flush();
+}
+
+/**
+ * Normalizes boolean skip flags from requests or cells.
+ */
+function parseBooleanSkip(val) {
+  return val === true || String(val).trim().toLowerCase() === "true" || val === 1;
+}
+
+/**
+ * Parses numeric amount from string or number, defaulting to 0.00.
+ */
+function parseAmount(val) {
+  var clean = String(val !== null && val !== undefined ? val : "").replace(/[^0-9.-]/g, "");
+  var amt = parseFloat(clean);
+  return isNaN(amt) ? 0.00 : amt;
+}
+
+/**
+ * Standard JSON response helper for Web App endpoints.
+ */
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
 /**
  * Safely sets Column M (Skip) state for both checkbox-validated cells and plain cells.
@@ -195,7 +263,7 @@ var clearAmountColumnBorders = clearTransactionBorders;
  */
 function setCellSkipState(cell, shouldSkip) {
   if (!cell) return;
-  var isBoolSkip = (shouldSkip === true || String(shouldSkip).trim().toLowerCase() === "true" || shouldSkip === 1);
+  var isBoolSkip = parseBooleanSkip(shouldSkip);
   
   if (isBoolSkip) {
     try {
@@ -271,14 +339,9 @@ function getRecentTransactionsFromSheet(sheet, limit) {
     var cat = String(rowValues[catCol] || "").trim();
     var fromVal = String(rowValues[fromCol] || "").trim();
     var toVal = String(rowValues[toCol] || "").trim();
-    var rawAmt = rowValues[amtCol];
-    var rawDate = rowValues[dateCol];
     var rawM = colMValues[i] ? colMValues[i][0] : false;
-    var isSkip = (rawM === true || String(rawM).trim().toLowerCase() === "true" || rawM === 1);
-    
-    var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
-    var amt = parseFloat(cleanAmt);
-    if (isNaN(amt)) amt = 0.00;
+    var isSkip = parseBooleanSkip(rawM);
+    var amt = parseAmount(rowValues[amtCol]);
     
     var dateStr = "";
     if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
@@ -338,7 +401,7 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
     if (lastPopRow < startRow) continue;
 
     var numRows = lastPopRow - startRow + 1;
-    var values = sh.getRange(startRow, 1, numRows, 6).getValues();
+    var values = sh.getRange(startRow, 1, numRows, CONFIG.MAX_COL).getValues();
     var colMValues = sh.getRange(startRow, CONFIG.COL.SKIP, numRows, 1).getValues();
 
     for (var i = 0; i < values.length; i++) {
@@ -350,13 +413,9 @@ function getAllTransactionsFromAllBudgetSheets(ss) {
       var cat = String(rowValues[catCol] || "").trim();
       var fromVal = String(rowValues[fromCol] || "").trim();
       var toVal = String(rowValues[toCol] || "").trim();
-      var rawAmt = rowValues[amtCol];
       var rawM = colMValues[i] ? colMValues[i][0] : false;
-      var isSkip = (rawM === true || String(rawM).trim().toLowerCase() === "true" || rawM === 1);
-
-      var cleanAmt = String(rawAmt !== null && rawAmt !== undefined ? rawAmt : "").replace(/[^0-9.-]/g, "");
-      var amt = parseFloat(cleanAmt);
-      if (isNaN(amt)) amt = 0.00;
+      var isSkip = parseBooleanSkip(rawM);
+      var amt = parseAmount(rowValues[amtCol]);
 
       var dateStr = "";
       var dateObj = null;
@@ -410,7 +469,7 @@ function getFormOptions() {
   var targetSheet = getTargetSheet();
   var catSheet = getCategorySheet();
   var options = getOptionsFromCategoryTab(catSheet);
-  var recentTransactions = getRecentTransactionsFromSheet(targetSheet, 6);
+  var recentTransactions = getRecentTransactionsFromSheet(targetSheet);
   
   return {
     success: true,
@@ -522,7 +581,7 @@ function appendTransaction(data) {
     message: "Transaction added successfully",
     sheetName: sheet.getName(),
     row: targetRow,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 6),
+    recentTransactions: getRecentTransactionsFromSheet(sheet),
     entry: {
       date: Utilities.formatDate(dateVal, tz, "dd MMM yyyy"),
       description: descVal,
@@ -647,7 +706,7 @@ function editTransaction(data) {
       sheetName: sheet.getName(),
       row: targetRow,
       moved: false,
-      recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
+      recentTransactions: getRecentTransactionsFromSheet(sheet)
     };
   }
 
@@ -659,40 +718,7 @@ function editTransaction(data) {
 
     allRows.splice(targetIndex, 1);
     colMValues.splice(targetIndex, 1);
-    
-    var writeMatrix = [];
-    var writeMatrixM = [];
-    for (var w = 0; w < allRows.length; w++) {
-      writeMatrix.push(allRows[w]);
-      writeMatrixM.push(colMValues[w]);
-    }
-    while (writeMatrix.length < count) {
-      writeMatrix.push(["", "", "", "", "", ""]);
-      writeMatrixM.push([""]);
-    }
-    sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
-    sheet.getRange(startRow, CONFIG.COL.SKIP, writeMatrixM.length, 1).setValues(writeMatrixM);
-
-    if (allRows.length > 0) {
-      sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
-      sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
-    }
-
-    var trailingRow = startRow + allRows.length;
-    var rowsToClear = count - allRows.length;
-    if (rowsToClear > 0) {
-      try {
-        var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
-        clearRange.clearContent();
-        clearRange.clear({ contentsOnly: true });
-
-        var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
-        clearRangeM.clearContent();
-        clearRangeM.clear({ contentsOnly: true });
-      } catch (e) {}
-    }
-    clearTransactionBorders(sheet);
-    SpreadsheetApp.flush();
+    compactAndWriteRows(sheet, allRows, colMValues, count);
 
     var addRes = appendTransaction({
       date: updated.date,
@@ -710,13 +736,13 @@ function editTransaction(data) {
       sheetName: newSheet.getName(),
       row: addRes.row,
       moved: true,
-      recentTransactions: getRecentTransactionsFromSheet(newSheet, 6)
+      recentTransactions: getRecentTransactionsFromSheet(newSheet)
     };
   }
 
   // Case 3: Date changed within the same sheet
   var rawOldM3 = colMValues[targetIndex] ? colMValues[targetIndex][0] : false;
-  var targetSkip3 = (updated && updated.skip !== undefined) ? Boolean(updated.skip) : (rawOldM3 === true || String(rawOldM3).toLowerCase() === "true" || rawOldM3 === 1);
+  var targetSkip3 = (updated && updated.skip !== undefined) ? Boolean(updated.skip) : parseBooleanSkip(rawOldM3);
 
   allRows.splice(targetIndex, 1);
   colMValues.splice(targetIndex, 1);
@@ -754,7 +780,7 @@ function editTransaction(data) {
     sheetName: sheet.getName(),
     row: destRow,
     moved: true,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
+    recentTransactions: getRecentTransactionsFromSheet(sheet)
   };
 }
 
@@ -881,55 +907,13 @@ function deleteLastMatchingTransaction(data) {
   var clearedRow = startRow + deleteIndex;
   allRows.splice(deleteIndex, 1);
   colMValues.splice(deleteIndex, 1);
+  compactAndWriteRows(sheet, allRows, colMValues, count);
 
-  // Construct complete atomic matrix of length `count`
-  // Compacted rows first, followed by empty rows ["", "", "", "", "", ""]
-  // up to original count to guarantee trailing rows are explicitly overwritten.
-  var writeMatrix = [];
-  var writeMatrixM = [];
-  for (var w = 0; w < allRows.length; w++) {
-    writeMatrix.push(allRows[w]);
-    writeMatrixM.push(colMValues[w]);
-  }
-  while (writeMatrix.length < count) {
-    writeMatrix.push(["", "", "", "", "", ""]);
-    writeMatrixM.push([""]);
-  }
-
-  // Atomically overwrite columns A-F across all original rows
-  sheet.getRange(startRow, 1, writeMatrix.length, maxCol).setValues(writeMatrix);
-  // Atomically overwrite column M across all original rows
-  sheet.getRange(startRow, CONFIG.COL.SKIP, writeMatrixM.length, 1).setValues(writeMatrixM);
-
-  // Re-apply number formatting to remaining populated rows
-  if (allRows.length > 0) {
-    sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
-    sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
-  }
-
-  // Explicitly clear content and contentsOnly on the trailing cleared rows as belt-and-suspenders
-  var trailingRow = startRow + allRows.length;
-  var rowsToClear = count - allRows.length;
-  if (rowsToClear > 0) {
-    try {
-      var clearRange = sheet.getRange(trailingRow, 1, rowsToClear, maxCol);
-      clearRange.clearContent();
-      clearRange.clear({ contentsOnly: true });
-
-      var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
-      clearRangeM.clearContent();
-      clearRangeM.clear({ contentsOnly: true });
-      try { clearRangeM.uncheck(); } catch (eU) {}
-    } catch (e) {}
-  }
-
-  clearTransactionBorders(sheet);
-  SpreadsheetApp.flush();
   return { 
     success: true, 
     message: "Transaction deleted and rows compacted.", 
     clearedRow: clearedRow,
-    recentTransactions: getRecentTransactionsFromSheet(sheet, 6)
+    recentTransactions: getRecentTransactionsFromSheet(sheet, CONFIG.RECENT_LIMIT)
   };
 }
 
@@ -1042,7 +1026,7 @@ function batchProcessTransactions(data) {
     success: true,
     processedCount: processedCount,
     message: "Processed " + processedCount + " transactions in batch.",
-    recentTransactions: getRecentTransactionsFromSheet(primarySheet, 6)
+    recentTransactions: getRecentTransactionsFromSheet(primarySheet)
   };
 }
 
@@ -1054,31 +1038,29 @@ function doGet(e) {
     var action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).toLowerCase() : "";
     if (action === "recent" || action === "getrecent") {
       var targetSheet = getTargetSheet(e && e.parameter ? e.parameter.date : null);
-      var recent = getRecentTransactionsFromSheet(targetSheet, 6);
-      return ContentService.createTextOutput(JSON.stringify({
+      var recent = getRecentTransactionsFromSheet(targetSheet, CONFIG.RECENT_LIMIT);
+      return createJsonResponse({
         success: true,
         sheetName: targetSheet.getName(),
         recentTransactions: recent
-      })).setMimeType(ContentService.MimeType.JSON);
+      });
     }
 
     if (action === "all" || action === "alltransactions") {
       var all = getAllTransactionsFromAllBudgetSheets();
-      return ContentService.createTextOutput(JSON.stringify({
+      return createJsonResponse({
         success: true,
         transactions: all,
         totalCount: all.length
-      })).setMimeType(ContentService.MimeType.JSON);
+      });
     }
 
-    var payload = getFormOptions();
-    return ContentService.createTextOutput(JSON.stringify(payload))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse(getFormOptions());
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return createJsonResponse({
       success: false,
       error: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
 
@@ -1104,30 +1086,22 @@ function doPost(e) {
     
     // Batch processing of queued offline transactions
     if (action === "batch" || Array.isArray(data.transactions) || Array.isArray(data.items)) {
-      var batchResponse = batchProcessTransactions(data);
-      return ContentService.createTextOutput(JSON.stringify(batchResponse))
-        .setMimeType(ContentService.MimeType.JSON);
+      return createJsonResponse(batchProcessTransactions(data));
     }
 
     if (action === "undo" || action === "delete") {
-      var undoResponse = deleteLastMatchingTransaction(data);
-      return ContentService.createTextOutput(JSON.stringify(undoResponse))
-        .setMimeType(ContentService.MimeType.JSON);
+      return createJsonResponse(deleteLastMatchingTransaction(data));
     }
 
     if (action === "edit" || action === "update") {
-      var editResponse = editTransaction(data);
-      return ContentService.createTextOutput(JSON.stringify(editResponse))
-        .setMimeType(ContentService.MimeType.JSON);
+      return createJsonResponse(editTransaction(data));
     }
     
-    var response = appendTransaction(data);
-    return ContentService.createTextOutput(JSON.stringify(response))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse(appendTransaction(data));
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return createJsonResponse({
       success: false,
       error: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
