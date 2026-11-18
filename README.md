@@ -3,7 +3,7 @@
 A lightweight mobile web app for logging budget transactions directly into your own Google Sheet.
 
 - **Live Web App**: [https://cstarke.github.io/budget/](https://cstarke.github.io/budget/)
-- **Template Google Sheet**: [Open Template Sheet](https://docs.google.com/spreadsheets/d/1Ra6J_dwINj5S3B-5Iivj5pT54gsHry-zgPWv08lSOkA/edit?usp=sharing)
+- **Template Google Sheet**: [Open Template Sheet](https://docs.google.com/spreadsheets/d/1Lc_h2783X5wQ55_hJs01Z-EAmZ9p2if0uVGjQfGlqG0/edit?usp=sharing)
 
 ---
 
@@ -52,7 +52,7 @@ Follow these steps to get your sheet connected to the mobile app:
 
 ### Step 1: Copy the Google Sheet Template
 
-1. Open the [Budget Template Sheet](https://docs.google.com/spreadsheets/d/1Ra6J_dwINj5S3B-5Iivj5pT54gsHry-zgPWv08lSOkA/edit?usp=sharing).
+1. Open the [Budget Template Sheet](https://docs.google.com/spreadsheets/d/1Lc_h2783X5wQ55_hJs01Z-EAmZ9p2if0uVGjQfGlqG0/edit?usp=sharing).
 2. Click **File > Make a copy** to save your own copy to your Google Drive.
 3. The backend script is already attached inside your copied sheet.
 
