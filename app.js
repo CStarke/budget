@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v98";
+  const APP_VERSION = "v99";
 
   // State
   const state = {
@@ -164,7 +164,7 @@
     btnResetAllTxFilters: document.getElementById("btnResetAllTxFilters")
   };
 
-  // System Bar Colors Synchronization (Top status bar & Bottom navbar section)
+  // Top Status Bar Theme Color Synchronization
   // =========================================================================
   const SYSTEM_BAR_COLORS = {
     mainPage: "#090d16",
@@ -194,30 +194,21 @@
     );
 
     let topColor = SYSTEM_BAR_COLORS.mainPage;
-    let bottomColor = SYSTEM_BAR_COLORS.mainPage;
 
     if (isAllTxOpen) {
       if (isAllTxFilterOpen || isPickerOpen) {
         // Filter modal or picker overlay open on top of All Transactions
         topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
-        bottomColor = SYSTEM_BAR_COLORS.modalSurface;
       } else {
         // All Transactions full-screen surface (clean #111827)
         topColor = SYSTEM_BAR_COLORS.modalSurface;
-        bottomColor = SYSTEM_BAR_COLORS.modalSurface;
       }
-    } else if (isBottomSheetModalOpen) {
-      // Bottom sheet modal: Top bar darkens with scrim (#000000), Bottom navbar matches modal sheet (#111827)
+    } else if (isBottomSheetModalOpen || isPickerOpen) {
+      // Bottom sheet modal or chip selector over main page: Top status bar darkens (#000000)
       topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
-      bottomColor = SYSTEM_BAR_COLORS.modalSurface;
-    } else if (isPickerOpen) {
-      // Chip selector overlay: Top and bottom darken with overlay (#000000)
-      topColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
-      bottomColor = SYSTEM_BAR_COLORS.darkenedBackdrop;
     } else {
-      // Main page (default): Both top and bottom match main page (#090d16)
+      // Main page (default #090d16)
       topColor = SYSTEM_BAR_COLORS.mainPage;
-      bottomColor = SYSTEM_BAR_COLORS.mainPage;
     }
 
     // Update top status bar / address bar
@@ -225,10 +216,6 @@
     if (metaTag) {
       metaTag.setAttribute("content", topColor);
     }
-
-    // Update bottom navbar section / root canvas
-    document.documentElement.style.backgroundColor = bottomColor;
-    document.body.style.backgroundColor = bottomColor;
   }
 
   // Default fallback options if sheet hasn't synced yet
