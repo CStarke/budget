@@ -16,6 +16,7 @@ var CONFIG = {
   SHEET_NAME_PREFIX: "Budget ",
   FALLBACK_SHEET_NAME: "Budget 2026",
   CATEGORY_TAB_NAME: "Category",
+  TARGET_TABLE_NAME: "CategoryToFrom",
   START_ROW: 2,
   MAX_COL: 6,
   RECENT_LIMIT: 6,
@@ -57,43 +58,22 @@ function getCategorySheet() {
 }
 
 /**
- * Reads options from the Category tab by finding columns titled "Category", "From", and "To" in Row 1.
- * Filters out "Total spent" from categories.
+ * Reads options dynamically from the native table titled "CategoryToFrom" on the Category tab.
+ * Dynamically resolves Category, From, and To columns regardless of column position or order.
+ * Strictly ignores the "Category" column in "Spending by Category" or any other table.
  */
 function getOptionsFromCategoryTab(categorySheet) {
   if (!categorySheet) return { category: [], from: [], to: [] };
-  var lastCol = categorySheet.getLastColumn();
-  var lastRow = categorySheet.getLastRow();
-  if (lastCol < 1 || lastRow < CONFIG.START_ROW) {
-    return { category: [], from: [], to: [] };
-  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var targetTableName = CONFIG.TARGET_TABLE_NAME || "CategoryToFrom";
 
-  // Read Row 1 headers to locate Category, From, and To columns
-  var headers = categorySheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var catCol = -1;
-  var fromCol = -1;
-  var toCol = -1;
-
-  for (var c = 0; c < headers.length; c++) {
-    var headerText = String(headers[c] || "").trim().toLowerCase();
-    if (!headerText) continue;
-
-    if (headerText === "category" || headerText === "categories" || headerText.indexOf("cat") === 0) {
-      catCol = c + 1;
-    } else if (headerText === "from" || headerText.indexOf("source") !== -1 || headerText.indexOf("account") !== -1) {
-      fromCol = c + 1;
-    } else if (headerText === "to" || headerText.indexOf("dest") !== -1 || headerText.indexOf("payee") !== -1) {
-      toCol = c + 1;
-    }
-  }
-
-  function extractColumnValues(colIndex, isCategory) {
-    if (colIndex === -1) return [];
-    var values = categorySheet.getRange(CONFIG.START_ROW, colIndex, lastRow - CONFIG.START_ROW + 1, 1).getValues();
+  // Helper to extract unique, non-empty values from a 2D array column
+  function extractColumnFromTable(tableData, colIdx, isCategory) {
+    if (colIdx < 0) return [];
     var list = [];
     var seen = {};
-    for (var r = 0; r < values.length; r++) {
-      var val = values[r][0];
+    for (var r = 1; r < tableData.length; r++) { // Skip row 0 (headers)
+      var val = tableData[r][colIdx];
       if (val !== null && val !== undefined) {
         var str = String(val).trim();
         if (str.length > 0) {
@@ -110,11 +90,195 @@ function getOptionsFromCategoryTab(categorySheet) {
     return list;
   }
 
-  return {
-    category: extractColumnValues(catCol, true),
-    from: extractColumnValues(fromCol, false),
-    to: extractColumnValues(toCol, false)
-  };
+  // Helper to identify column indices for Category, From, and To from a header array
+  function findHeaderIndices(headerRow) {
+    var catIdx = -1, fromIdx = -1, toIdx = -1;
+    for (var c = 0; c < headerRow.length; c++) {
+      var h = String(headerRow[c] || "").trim().toLowerCase();
+      if (!h) continue;
+      if (h === "category" || h === "categories") {
+        catIdx = c;
+      } else if (h === "from" || h.indexOf("source") !== -1 || h.indexOf("account") !== -1) {
+        fromIdx = c;
+      } else if (h === "to" || h.indexOf("dest") !== -1 || h.indexOf("payee") !== -1) {
+        toIdx = c;
+      }
+    }
+    return { catIdx: catIdx, fromIdx: fromIdx, toIdx: toIdx };
+  }
+
+  // -------------------------------------------------------------
+  // Layer 1A: Native Table via Google Sheets API Service (v4)
+  // -------------------------------------------------------------
+  if (typeof Sheets !== "undefined" && Sheets.Spreadsheets) {
+    try {
+      var metadata = Sheets.Spreadsheets.get(ss.getId(), {
+        fields: "sheets.properties.title,sheets.tables.name,sheets.tables.range"
+      });
+      if (metadata && metadata.sheets) {
+        for (var s = 0; s < metadata.sheets.length; s++) {
+          var sObj = metadata.sheets[s];
+          if (sObj.tables) {
+            for (var t = 0; t < sObj.tables.length; t++) {
+              var tbl = sObj.tables[t];
+              if (String(tbl.name).trim().toLowerCase() === targetTableName.toLowerCase()) {
+                var sh = ss.getSheetByName(sObj.properties.title) || categorySheet;
+                var gr = tbl.range;
+                var startR = gr.startRowIndex + 1;
+                var numR = gr.endRowIndex - gr.startRowIndex;
+                var startC = gr.startColumnIndex + 1;
+                var numC = gr.endColumnIndex - gr.startColumnIndex;
+
+                var tableValues = sh.getRange(startR, startC, numR, numC).getValues();
+                if (tableValues.length > 1) {
+                  var indices = findHeaderIndices(tableValues[0]);
+                  return {
+                    category: extractColumnFromTable(tableValues, indices.catIdx, true),
+                    from: extractColumnFromTable(tableValues, indices.fromIdx, false),
+                    to: extractColumnFromTable(tableValues, indices.toIdx, false)
+                  };
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (eApi) {
+      Logger.log("Layer 1A (Sheets API) error: " + eApi);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Layer 1B: Native Table via Sheets REST API endpoint
+  // -------------------------------------------------------------
+  try {
+    var restUrl = "https://sheets.googleapis.com/v4/spreadsheets/" + ss.getId() + "?fields=sheets.properties.title,sheets.tables.name,sheets.tables.range";
+    var token = ScriptApp.getOAuthToken();
+    if (token) {
+      var res = UrlFetchApp.fetch(restUrl, {
+        method: "GET",
+        headers: { "Authorization": "Bearer " + token },
+        muteHttpExceptions: true
+      });
+      if (res.getResponseCode() === 200) {
+        var restData = JSON.parse(res.getContentText());
+        if (restData && restData.sheets) {
+          for (var rs = 0; rs < restData.sheets.length; rs++) {
+            var rSheet = restData.sheets[rs];
+            if (rSheet.tables) {
+              for (var rt = 0; rt < rSheet.tables.length; rt++) {
+                var rTbl = rSheet.tables[rt];
+                if (String(rTbl.name).trim().toLowerCase() === targetTableName.toLowerCase()) {
+                  var rSh = ss.getSheetByName(rSheet.properties.title) || categorySheet;
+                  var rGr = rTbl.range;
+                  var rStartR = rGr.startRowIndex + 1;
+                  var rNumR = rGr.endRowIndex - rGr.startRowIndex;
+                  var rStartC = rGr.startColumnIndex + 1;
+                  var rNumC = rGr.endColumnIndex - rGr.startColumnIndex;
+
+                  var rTableValues = rSh.getRange(rStartR, rStartC, rNumR, rNumC).getValues();
+                  if (rTableValues.length > 1) {
+                    var rIndices = findHeaderIndices(rTableValues[0]);
+                    return {
+                      category: extractColumnFromTable(rTableValues, rIndices.catIdx, true),
+                      from: extractColumnFromTable(rTableValues, rIndices.fromIdx, false),
+                      to: extractColumnFromTable(rTableValues, rIndices.toIdx, false)
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (eRest) {
+    Logger.log("Layer 1B (REST) error: " + eRest);
+  }
+
+  // -------------------------------------------------------------
+  // Layer 2: Smart Grid Header Clustering
+  // Scans Category sheet to find Category, From, and To grouped together.
+  // Explicitly excludes any Category column grouped with Spending / Budget metrics.
+  // -------------------------------------------------------------
+  var lastRow = categorySheet.getLastRow();
+  var lastCol = categorySheet.getLastColumn();
+  if (lastCol >= 1 && lastRow >= 2) {
+    for (var rCheck = 1; rCheck <= Math.min(5, lastRow); rCheck++) {
+      var rowHeaders = categorySheet.getRange(rCheck, 1, 1, lastCol).getValues()[0];
+      var catCandidates = [];
+      var fromCol = -1;
+      var toCol = -1;
+
+      for (var col = 0; col < rowHeaders.length; col++) {
+        var txt = String(rowHeaders[col] || "").trim().toLowerCase();
+        if (!txt) continue;
+        if (txt === "category" || txt === "categories") {
+          // Check if neighboring headers suggest "Spending by Category" table
+          var isSpendingTable = false;
+          for (var neighbor = Math.max(0, col - 2); neighbor <= Math.min(rowHeaders.length - 1, col + 3); neighbor++) {
+            var nTxt = String(rowHeaders[neighbor] || "").trim().toLowerCase();
+            if (nTxt.indexOf("spent") !== -1 || nTxt.indexOf("budget") !== -1 || nTxt.indexOf("remaining") !== -1 || nTxt.indexOf("actual") !== -1) {
+              isSpendingTable = true;
+              break;
+            }
+          }
+          if (!isSpendingTable) {
+            catCandidates.push(col + 1);
+          }
+        } else if (txt === "from" || txt.indexOf("source") !== -1) {
+          fromCol = col + 1;
+        } else if (txt === "to" || txt.indexOf("dest") !== -1) {
+          toCol = col + 1;
+        }
+      }
+
+      if (catCandidates.length > 0) {
+        var chosenCat = catCandidates[0];
+        // If multiple candidates, pick the one closest to From / To
+        if (catCandidates.length > 1 && (fromCol !== -1 || toCol !== -1)) {
+          var refCol = fromCol !== -1 ? fromCol : toCol;
+          var bestDist = 999;
+          for (var i = 0; i < catCandidates.length; i++) {
+            var dist = Math.abs(catCandidates[i] - refCol);
+            if (dist < bestDist) {
+              bestDist = dist;
+              chosenCat = catCandidates[i];
+            }
+          }
+        }
+
+        var numDataRows = lastRow - rCheck;
+        if (numDataRows > 0) {
+          var readGridCol = function(cIdx, isCat) {
+            if (cIdx === -1) return [];
+            var vals = categorySheet.getRange(rCheck + 1, cIdx, numDataRows, 1).getValues();
+            var res = [];
+            var sMap = {};
+            for (var vr = 0; vr < vals.length; vr++) {
+              var vStr = String(vals[vr][0] || "").trim();
+              if (vStr.length > 0) {
+                if (isCat && (vStr.toLowerCase() === "total spent" || vStr.toLowerCase().indexOf("total spent") === 0)) continue;
+                if (!sMap[vStr]) {
+                  sMap[vStr] = true;
+                  res.push(vStr);
+                }
+              }
+            }
+            return res;
+          };
+
+          return {
+            category: readGridCol(chosenCat, true),
+            from: readGridCol(fromCol, false),
+            to: readGridCol(toCol, false)
+          };
+        }
+      }
+    }
+  }
+
+  return { category: [], from: [], to: [] };
 }
 
 /**
@@ -1104,4 +1268,17 @@ function doPost(e) {
       error: err.toString()
     });
   }
+}
+
+/**
+ * Test function to verify dynamic table options extraction.
+ * Select 'testCategoryOptions' in the Apps Script toolbar and click 'Run'.
+ */
+function testCategoryOptions() {
+  var catSheet = getCategorySheet();
+  var options = getOptionsFromCategoryTab(catSheet);
+  Logger.log("=== Options Loaded from CategoryToFrom ===");
+  Logger.log("Categories (" + options.category.length + "): " + JSON.stringify(options.category));
+  Logger.log("From Accounts (" + options.from.length + "): " + JSON.stringify(options.from));
+  Logger.log("To Accounts (" + options.to.length + "): " + JSON.stringify(options.to));
 }
