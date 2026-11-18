@@ -8,7 +8,7 @@
  * - Google Apps Script: Passed directly to network (offline queue handles offline logging).
  */
 
-const CACHE_NAME = "budget-app-v87";
+const CACHE_NAME = "budget-app-v88";
 const APP_SHELL = [
   "./",
   "./index.html",
