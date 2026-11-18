@@ -2362,10 +2362,14 @@
           });
           setTimeout(() => {
             fetchRecentTransactionsFromSheet();
+            if (elements.allTransactionsModal && elements.allTransactionsModal.classList.contains("open")) {
+              fetchAllTransactionsFromSheet(false);
+            }
           }, 1500);
         } catch (e) {
           console.warn("Could not dispatch edit to sheet, queueing offline:", e);
           enqueueEdit({
+            sheetName: orig.sheetName || null,
             row: orig.row,
             original: orig,
             updated: updatedTx
@@ -2373,6 +2377,7 @@
         }
       } else {
         enqueueEdit({
+          sheetName: orig.sheetName || null,
           row: orig.row,
           original: orig,
           updated: updatedTx
@@ -2380,6 +2385,7 @@
       }
     }
 
+    editorTxOriginal = { ...orig, ...updatedTx };
     closeQuickFillEditor();
     haptic(15);
     showToast("Transaction updated!", "success");

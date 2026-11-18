@@ -190,6 +190,51 @@ function clearTransactionBorders(sheet) {
 var clearAmountColumnBorders = clearTransactionBorders;
 
 /**
+ * Safely sets Column M (Skip) state for both checkbox-validated cells and plain cells.
+ * Uses range.check() / range.uncheck() for checkbox validations, with setValue/clearContent fallbacks.
+ */
+function setCellSkipState(cell, shouldSkip) {
+  if (!cell) return;
+  var isBoolSkip = (shouldSkip === true || String(shouldSkip).trim().toLowerCase() === "true" || shouldSkip === 1);
+  
+  if (isBoolSkip) {
+    try {
+      cell.check();
+    } catch (e1) {}
+    try {
+      if (cell.isChecked() !== true) {
+        cell.setValue(true);
+      }
+    } catch (e2) {
+      try {
+        cell.setValue("TRUE");
+      } catch (e3) {}
+    }
+  } else {
+    try {
+      cell.uncheck();
+    } catch (e4) {}
+    try {
+      if (cell.isChecked() !== false) {
+        try {
+          cell.setValue(false);
+        } catch (e5) {
+          try {
+            cell.clearContent();
+          } catch (e6) {
+            cell.setValue("");
+          }
+        }
+      }
+    } catch (e7) {
+      try {
+        cell.clearContent();
+      } catch (e8) {}
+    }
+  }
+}
+
+/**
  * Retrieves the most recent N transactions from the budget sheet.
  */
 function getRecentTransactionsFromSheet(sheet, limit) {
@@ -245,6 +290,7 @@ function getRecentTransactionsFromSheet(sheet, limit) {
     var rowNumber = startRow + i;
     list.push({
       id: "sheet_" + rowNumber + "_" + (desc || "tx").replace(/[^a-zA-Z0-9]/g, ""),
+      sheetName: sheet.getName(),
       row: rowNumber,
       date: dateStr,
       description: desc || "Untitled",
@@ -423,9 +469,7 @@ function appendTransaction(data) {
     sheet.getRange(startRow, 1, 1, maxCol).setValues([newRow]);
     sheet.getRange(startRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(startRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
-    if (hasSkip) {
-      sheet.getRange(startRow, CONFIG.COL.SKIP).setValue(true);
-    }
+    setCellSkipState(sheet.getRange(startRow, CONFIG.COL.SKIP), hasSkip);
     targetRow = startRow;
   } else {
     var count = lastPopRow - startRow + 1;
@@ -453,9 +497,7 @@ function appendTransaction(data) {
       sheet.getRange(nextRow, 1, 1, maxCol).setValues([newRow]);
       sheet.getRange(nextRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
       sheet.getRange(nextRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
-      if (hasSkip) {
-        sheet.getRange(nextRow, CONFIG.COL.SKIP).setValue(true);
-      }
+      setCellSkipState(sheet.getRange(nextRow, CONFIG.COL.SKIP), hasSkip);
       targetRow = nextRow;
     } else {
       allRows.splice(insertIndex, 0, newRow);
@@ -467,6 +509,7 @@ function appendTransaction(data) {
       sheet.getRange(startRow, CONFIG.COL.SKIP, colMValues.length, 1).setValues(colMValues);
       sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
       sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+      setCellSkipState(sheet.getRange(startRow + insertIndex, CONFIG.COL.SKIP), hasSkip);
       targetRow = startRow + insertIndex;
     }
   }
@@ -594,7 +637,7 @@ function editTransaction(data) {
     sheet.getRange(targetRow, CONFIG.COL.DATE).setNumberFormat("dd mmm yyyy");
     sheet.getRange(targetRow, CONFIG.COL.AMOUNT).setNumberFormat("$#,##0.00");
     if (updated && updated.skip !== undefined) {
-      sheet.getRange(targetRow, CONFIG.COL.SKIP).setValue(Boolean(updated.skip));
+      setCellSkipState(sheet.getRange(targetRow, CONFIG.COL.SKIP), updated.skip);
     }
     clearTransactionBorders(sheet);
     SpreadsheetApp.flush();
@@ -700,6 +743,7 @@ function editTransaction(data) {
   sheet.getRange(startRow, CONFIG.COL.SKIP, colMValues.length, 1).setValues(colMValues);
   sheet.getRange(startRow, CONFIG.COL.DATE, allRows.length, 1).setNumberFormat("dd mmm yyyy");
   sheet.getRange(startRow, CONFIG.COL.AMOUNT, allRows.length, 1).setNumberFormat("$#,##0.00");
+  setCellSkipState(sheet.getRange(startRow + insertIndex, CONFIG.COL.SKIP), targetSkip3);
   clearTransactionBorders(sheet);
   SpreadsheetApp.flush();
 
@@ -875,6 +919,7 @@ function deleteLastMatchingTransaction(data) {
       var clearRangeM = sheet.getRange(trailingRow, CONFIG.COL.SKIP, rowsToClear, 1);
       clearRangeM.clearContent();
       clearRangeM.clear({ contentsOnly: true });
+      try { clearRangeM.uncheck(); } catch (eU) {}
     } catch (e) {}
   }
 
@@ -929,6 +974,9 @@ function batchProcessTransactions(data) {
     sheet.getRange(targetRow, CONFIG.COL.AMOUNT, matrix.length, 1).setNumberFormat("$#,##0.00");
     if (hasAnySkip) {
       sheet.getRange(targetRow, CONFIG.COL.SKIP, matrixM.length, 1).setValues(matrixM);
+    }
+    for (var mr = 0; mr < rows.length; mr++) {
+      setCellSkipState(sheet.getRange(targetRow + mr, CONFIG.COL.SKIP), rows[mr].skip);
     }
     clearTransactionBorders(sheet);
     sheetInfo.rows = [];
