@@ -6,7 +6,7 @@
   "use strict";
 
   // Application Version
-  const APP_VERSION = "v95";
+  const APP_VERSION = "v93";
 
   // State
   const state = {
@@ -163,102 +163,6 @@
     btnApplyAllTxFilters: document.getElementById("btnApplyAllTxFilters"),
     btnResetAllTxFilters: document.getElementById("btnResetAllTxFilters")
   };
-
-  // System Chrome & Safe Area Dynamic Bleed State
-  // =========================================================================
-  const CHROME_THEME_COLORS = {
-    default: "#090d16",
-    dimmedBackdrop: "#000000",
-    modalSheet: "#111827",
-    fullScreenModal: "#111827"
-  };
-
-  function updateSystemThemeColor(color) {
-    const metaTags = document.querySelectorAll('meta[name="theme-color"]');
-    if (metaTags && metaTags.length > 0) {
-      metaTags.forEach((tag) => tag.setAttribute("content", color));
-    } else {
-      const meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta.content = color;
-      document.head.appendChild(meta);
-    }
-  }
-
-  function syncSystemChromeState() {
-    const isFullScreenOpen = Boolean(
-      elements.allTransactionsModal &&
-      elements.allTransactionsModal.classList.contains("open")
-    );
-    const isPickerOpen = Boolean(
-      elements.pickerOverlay &&
-      elements.pickerOverlay.classList.contains("open")
-    );
-    const isSheetOpen = [
-      elements.recentModal,
-      elements.settingsModal,
-      elements.quickFillSettingsModal,
-      elements.transactionEditorModal,
-      elements.importPresetsModal,
-      elements.allTxFilterModal
-    ].some((modal) => modal && modal.classList.contains("open"));
-
-    const docEl = document.documentElement;
-    const bodyEl = document.body;
-
-    if (isSheetOpen) {
-      // Bottom sheet open: Top status bar dims with overlay (#000000), bottom bleeds modal sheet surface (#111827)
-      docEl.classList.remove("full-screen-modal-open", "picker-modal-open");
-      bodyEl.classList.remove("full-screen-modal-open", "picker-modal-open");
-      docEl.classList.add("modal-sheet-open");
-      bodyEl.classList.add("modal-sheet-open");
-      updateSystemThemeColor(CHROME_THEME_COLORS.dimmedBackdrop);
-    } else if (isFullScreenOpen) {
-      // Full screen modal open (All Transactions): Both top and bottom bleed sheet surface (#111827)
-      docEl.classList.remove("modal-sheet-open", "picker-modal-open");
-      bodyEl.classList.remove("modal-sheet-open", "picker-modal-open");
-      docEl.classList.add("full-screen-modal-open");
-      bodyEl.classList.add("full-screen-modal-open");
-      updateSystemThemeColor(CHROME_THEME_COLORS.fullScreenModal);
-    } else if (isPickerOpen) {
-      // Centered chip selector overlay: Top and bottom darken with blur backdrop (#000000)
-      docEl.classList.remove("full-screen-modal-open", "modal-sheet-open");
-      bodyEl.classList.remove("full-screen-modal-open", "modal-sheet-open");
-      docEl.classList.add("picker-modal-open");
-      bodyEl.classList.add("picker-modal-open");
-      updateSystemThemeColor(CHROME_THEME_COLORS.dimmedBackdrop);
-    } else {
-      // Main page: Top and bottom bleed default background (#090d16)
-      docEl.classList.remove("modal-sheet-open", "full-screen-modal-open", "picker-modal-open");
-      bodyEl.classList.remove("modal-sheet-open", "full-screen-modal-open", "picker-modal-open");
-      updateSystemThemeColor(CHROME_THEME_COLORS.default);
-    }
-  }
-
-  function initSystemChromeObserver() {
-    const modals = [
-      elements.recentModal,
-      elements.settingsModal,
-      elements.quickFillSettingsModal,
-      elements.transactionEditorModal,
-      elements.importPresetsModal,
-      elements.allTxFilterModal,
-      elements.allTransactionsModal,
-      elements.pickerOverlay
-    ].filter(Boolean);
-
-    if (typeof MutationObserver !== "undefined") {
-      const observer = new MutationObserver(() => {
-        syncSystemChromeState();
-      });
-      modals.forEach((modal) => {
-        observer.observe(modal, { attributes: true, attributeFilter: ["class"] });
-      });
-    }
-
-    // Initial sync
-    syncSystemChromeState();
-  }
 
   // Default fallback options if sheet hasn't synced yet
   const DEFAULT_OPTIONS = {
@@ -615,13 +519,11 @@
     }
 
     elements.pickerOverlay.classList.add("open");
-    syncSystemChromeState();
   }
 
   function closePicker() {
     elements.pickerOverlay.classList.remove("open");
     activePickerField = null;
-    syncSystemChromeState();
   }
 
   function highlightError(element) {
@@ -975,7 +877,6 @@
     renderRecentList();
     if (elements.recentModal) {
       elements.recentModal.classList.add("open");
-      syncSystemChromeState();
     }
     fetchRecentTransactionsFromSheet();
   }
@@ -983,7 +884,6 @@
   function closeRecentModal() {
     if (elements.recentModal) {
       elements.recentModal.classList.remove("open");
-      syncSystemChromeState();
     }
   }
 
@@ -1364,12 +1264,10 @@
     updateQueueUI();
     updateThemeUI();
     elements.settingsModal.classList.add("open");
-    syncSystemChromeState();
   }
 
   function closeSettings() {
     elements.settingsModal.classList.remove("open");
-    syncSystemChromeState();
   }
 
   function saveSettings() {
@@ -1955,12 +1853,10 @@
   function openQuickFillSettings() {
     renderQuickFillSettingsList();
     elements.quickFillSettingsModal.classList.add("open");
-    syncSystemChromeState();
   }
 
   function closeQuickFillSettings() {
     elements.quickFillSettingsModal.classList.remove("open");
-    syncSystemChromeState();
   }
 
   function renderQuickFillSettingsList() {
@@ -2262,7 +2158,6 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.transactionEditorModal.classList.add("open");
-    syncSystemChromeState();
   }
 
   function openTransactionEditor(tx) {
@@ -2312,13 +2207,11 @@
     elements.qfToBtnText.textContent = qfEditorState.to || "(None)";
 
     elements.transactionEditorModal.classList.add("open");
-    syncSystemChromeState();
     haptic(15);
   }
 
   function closeQuickFillEditor() {
     elements.transactionEditorModal.classList.remove("open");
-    syncSystemChromeState();
   }
 
   function saveEditedTransaction() {
@@ -2662,17 +2555,11 @@
     if (elements.importConflictView) elements.importConflictView.style.display = "none";
     if (elements.importFallbackContainer) elements.importFallbackContainer.style.display = "none";
     if (elements.importFallbackTextarea) elements.importFallbackTextarea.value = "";
-    if (elements.importPresetsModal) {
-      elements.importPresetsModal.classList.add("open");
-      syncSystemChromeState();
-    }
+    if (elements.importPresetsModal) elements.importPresetsModal.classList.add("open");
   }
 
   function closeImportModal() {
-    if (elements.importPresetsModal) {
-      elements.importPresetsModal.classList.remove("open");
-      syncSystemChromeState();
-    }
+    if (elements.importPresetsModal) elements.importPresetsModal.classList.remove("open");
   }
 
   async function handlePasteClipboardClick() {
@@ -3370,12 +3257,10 @@
     syncDraftWithActiveFilter();
     updateFilterModalUI();
     elements.allTxFilterModal.classList.add("open");
-    syncSystemChromeState();
   }
 
   function closeAllTxFilterModal() {
     elements.allTxFilterModal.classList.remove("open");
-    syncSystemChromeState();
   }
 
   function syncDraftWithActiveFilter() {
@@ -3458,7 +3343,6 @@
     haptic(15);
     if (elements.allTransactionsModal) {
       elements.allTransactionsModal.classList.add("open");
-      syncSystemChromeState();
     }
 
     try {
@@ -3480,7 +3364,6 @@
   function closeAllTransactionsPage() {
     if (elements.allTransactionsModal) {
       elements.allTransactionsModal.classList.remove("open");
-      syncSystemChromeState();
     }
   }
 
@@ -3702,7 +3585,6 @@
 
   // Init
   initTheme();
-  initSystemChromeObserver();
   setDate(getFormattedDate(new Date()));
   updateAllButtons();
   updateDefaultButtons();

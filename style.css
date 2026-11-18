@@ -118,26 +118,6 @@ html, body {
   overflow-x: hidden;
   overscroll-behavior-y: none;
   line-height: 1.5;
-  transition: background-color 0.2s ease;
-}
-
-/* System Chrome & Safe Area Dynamic Bleed States */
-html:has(body.modal-sheet-open),
-html.modal-sheet-open,
-body.modal-sheet-open {
-  background: linear-gradient(to bottom, #000000 0%, #000000 45%, #111827 55%, #111827 100%) !important;
-}
-
-html:has(body.full-screen-modal-open),
-html.full-screen-modal-open,
-body.full-screen-modal-open {
-  background: #111827 !important;
-}
-
-html:has(body.picker-modal-open),
-html.picker-modal-open,
-body.picker-modal-open {
-  background: #000000 !important;
 }
 
 /* App Container */
@@ -504,13 +484,11 @@ body.picker-modal-open {
 /* Centered Dark-to-Transparent Radial Overlay (Mobile Fixed) */
 .picker-overlay {
   position: fixed;
-  inset: 0;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   width: 100vw;
-  width: 100dvw;
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -704,19 +682,13 @@ body.picker-modal-open {
 
 #recentModal .modal-sheet {
   max-height: 90vh;
-  max-height: 90dvh;
   display: flex;
   flex-direction: column;
-  padding: 24px 20px 0 20px;
-  overflow: hidden;
 }
 
 #recentModal .recent-list {
   flex: 1;
   max-height: none;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(var(--safe-bottom) + 72px);
 }
 
 .recent-item {
@@ -856,18 +828,12 @@ body.picker-modal-open {
 /* Settings Modal */
 .modal-overlay {
   position: fixed;
-  inset: 0;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  width: 100vw;
-  width: 100dvw;
-  height: 100vh;
-  height: 100dvh;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -896,32 +862,10 @@ body.picker-modal-open {
   max-height: 90dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 24px 20px 0 20px;
+  padding: 24px 20px calc(var(--safe-bottom) + 24px) 20px;
   transform: translateY(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   overscroll-behavior: contain;
-  position: relative;
-}
-
-/* Ensure bottom-most content in direct-scrolling sheets clears the home indicator when scrolled to end */
-.modal-sheet > *:last-child {
-  margin-bottom: calc(var(--safe-bottom) + 24px);
-}
-
-#recentModal .modal-sheet > .recent-footer {
-  margin-bottom: 0;
-}
-
-/* Bottom bleed pseudo-element to guarantee zero gap behind home bar/nav bar */
-.modal-sheet::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: max(160px, calc(var(--safe-bottom) + 80px));
-  background: #111827;
-  pointer-events: none;
 }
 
 .modal-overlay.open .modal-sheet {
@@ -1736,23 +1680,15 @@ body.picker-modal-open {
    All Transactions Full-Screen Page & Filter Modal (v73)
    ========================================================================== */
 
-/* "See All Transactions" Button in Recent Modal (Frosted Glass Floating Pass-Through) */
+/* "See All Transactions" Button in Recent Modal */
 .recent-footer {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  margin: 0 -20px 0 -20px;
-  padding: 10px 20px calc(var(--safe-bottom) + 24px) 20px;
-  background: rgba(17, 24, 39, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 12px 0 4px;
+  border-top: none;
+  margin-top: 6px;
   flex-shrink: 0;
-  z-index: 10;
 }
 
 .btn-see-all-transactions {
@@ -1786,16 +1722,6 @@ body.picker-modal-open {
 
 /* Full-Screen Overlay & Sheet */
 .full-screen-overlay {
-  position: fixed;
-  inset: 0;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw;
-  width: 100dvw;
-  height: 100vh;
-  height: 100dvh;
   z-index: 1045 !important;
   background: #111827;
   align-items: stretch;
@@ -1806,7 +1732,6 @@ body.picker-modal-open {
   width: 100% !important;
   max-width: 600px;
   margin: 0 auto;
-  height: 100% !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
   border-radius: 0 !important;
@@ -1818,18 +1743,6 @@ body.picker-modal-open {
   padding-top: max(env(safe-area-inset-top, 0px), 12px) !important;
   padding-bottom: 0 !important;
   box-sizing: border-box;
-  position: relative;
-}
-
-.full-screen-sheet::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: max(160px, calc(var(--safe-bottom) + 80px));
-  background: #111827;
-  pointer-events: none;
 }
 
 /* Header */
@@ -1839,9 +1752,7 @@ body.picker-modal-open {
   justify-content: space-between;
   padding: 12px 18px 10px;
   border-bottom: none;
-  background: rgba(17, 24, 39, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #111827;
   flex-shrink: 0;
 }
 
@@ -1889,10 +1800,7 @@ body.picker-modal-open {
   align-items: center;
   gap: 8px;
   padding: 8px 18px 10px;
-  background: rgba(17, 24, 39, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #111827;
   flex-shrink: 0;
   position: relative;
   z-index: 20;
